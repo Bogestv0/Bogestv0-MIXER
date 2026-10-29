@@ -1,7 +1,7 @@
 /* Общая логика окна: ссылки меню и обновления через GitHub Releases. */
 (function () {
   // Поменяйте OWNER на имя вашего аккаунта GitHub (то же самое в src-tauri/tauri.conf.json).
-  const REPO = 'OWNER/Bogestv0-MIXER';
+  const REPO = 'Bogestv0/Bogestv0-MIXER';
   const CHECK_EVERY_MS = 4 * 60 * 60 * 1000;
   const T = window.__TAURI__;
   const store = {
