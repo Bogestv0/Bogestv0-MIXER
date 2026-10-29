@@ -26,7 +26,7 @@
 #include <windows.h>
 #endif
 
-static const char* VERSION = "0.0.2";
+static const char* VERSION = "0.0.3";
 
 struct Engine {
     std::atomic<float> gain_lin{1.0f};
@@ -168,26 +168,56 @@ int main(int argc, char** argv) {
     Engine eng;
     eng.gain_lin = bg::db_to_lin(gain_db);
 
-    ma_device_config cfg = ma_device_config_init(ma_device_type_duplex);
-    cfg.sampleRate = static_cast<ma_uint32>(rate);
-    cfg.periodSizeInFrames = static_cast<ma_uint32>(period);
-    cfg.periods = 2;
-    cfg.performanceProfile = ma_performance_profile_low_latency;
-    cfg.noPreSilencedOutputBuffer = MA_TRUE;
-    cfg.dataCallback = on_audio;
-    cfg.pUserData = &eng;
-    cfg.capture.pDeviceID = &dl.cap[in_idx].id;
-    cfg.capture.format = ma_format_f32;
-    cfg.capture.channels = 2;
-    cfg.capture.shareMode = exclusive ? ma_share_mode_exclusive : ma_share_mode_shared;
-    cfg.playback.pDeviceID = &dl.play[out_idx].id;
-    cfg.playback.format = ma_format_f32;
-    cfg.playback.channels = 2;
-    cfg.wasapi.noAutoConvertSRC = MA_FALSE;  // ресемплинг делает система, если устройство на другой частоте
+    // Пробуем настройки от самых быстрых к самым мягким и показываем, какие подошли.
+    struct Attempt { ma_performance_profile prof; ma_uint32 period; const char* name; };
+    const Attempt attempts[] = {
+        {ma_performance_profile_low_latency, (ma_uint32)period, "малая задержка"},
+        {ma_performance_profile_conservative, (ma_uint32)period, "обычный режим"},
+        {ma_performance_profile_conservative, (ma_uint32)period * 2, "увеличенный блок"},
+        {ma_performance_profile_conservative, 0, "блок по умолчанию"},
+    };
+    auto make_cfg = [&](const Attempt& at, ma_device_type type) {
+        ma_device_config cfg = ma_device_config_init(type);
+        cfg.sampleRate = static_cast<ma_uint32>(rate);
+        cfg.periodSizeInFrames = at.period;
+        cfg.periods = 2;
+        cfg.performanceProfile = at.prof;
+        cfg.noPreSilencedOutputBuffer = MA_TRUE;
+        cfg.dataCallback = on_audio;
+        cfg.pUserData = &eng;
+        cfg.capture.pDeviceID = &dl.cap[in_idx].id;
+        cfg.capture.format = ma_format_f32;
+        cfg.capture.channels = 2;
+        cfg.capture.shareMode = exclusive ? ma_share_mode_exclusive : ma_share_mode_shared;
+        cfg.playback.pDeviceID = &dl.play[out_idx].id;
+        cfg.playback.format = ma_format_f32;
+        cfg.playback.channels = 2;
+        return cfg;
+    };
 
     ma_device dev;
-    if (ma_device_init(&ctx, &cfg, &dev) != MA_SUCCESS) {
-        std::fprintf(stderr, "Не удалось открыть устройства. Для --exclusive закройте программы, занявшие микрофон.\n");
+    bool opened = false;
+    for (const Attempt& at : attempts) {
+        ma_device_config cfg = make_cfg(at, ma_device_type_duplex);
+        ma_result dr = ma_device_init(&ctx, &cfg, &dev);
+        if (dr == MA_SUCCESS) { std::printf("Режим: %s\n", at.name); opened = true; break; }
+        std::fprintf(stderr, "Режим «%s» не открылся: %s (код %d)\n", at.name, ma_result_description(dr), dr);
+    }
+    if (!opened) {
+        std::fprintf(stderr, "\nПроверяю устройства по отдельности:\n");
+        {
+            ma_device_config c = make_cfg(attempts[1], ma_device_type_capture);
+            ma_device d; ma_result x = ma_device_init(&ctx, &c, &d);
+            std::fprintf(stderr, "  микрофон %d (%s): %s\n", in_idx, dl.cap[in_idx].name, x == MA_SUCCESS ? "открывается" : ma_result_description(x));
+            if (x == MA_SUCCESS) ma_device_uninit(&d);
+        }
+        {
+            ma_device_config c = make_cfg(attempts[1], ma_device_type_playback);
+            ma_device d; ma_result x = ma_device_init(&ctx, &c, &d);
+            std::fprintf(stderr, "  выход %d (%s): %s\n", out_idx, dl.play[out_idx].name, x == MA_SUCCESS ? "открывается" : ma_result_description(x));
+            if (x == MA_SUCCESS) ma_device_uninit(&d);
+        }
+        std::fprintf(stderr, "Если оба открываются по отдельности, а вместе нет, пришлите этот текст целиком.\n");
         ma_context_uninit(&ctx);
         return 1;
     }
