@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Bogestv0 MIXER</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600&amp;family=Unbounded:wght@500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+:root{--bg:#f1f2f6;--surface:#fff;--surface-2:#eef0f5;--line:#e3e5ea;--fg:#0b0b0c;--muted:#667080;--signal:#1f77bd;--signal-ink:#fff;--signal-soft:#e6f1fb;--warn:#8a5a00;--warn-soft:#fdf1d8;--bad:#b3261e;--ok:#1a7f4b;--ok-soft:#e3f5ea;--m-mid:#d9a21b}
+@media (prefers-color-scheme:dark){:root{--bg:#181818;--surface:#212121;--surface-2:#2a2a2a;--line:#2f2f2f;--fg:#f5f5f5;--muted:#a3a9b3;--signal:#6ab3f3;--signal-ink:#0b1a2a;--signal-soft:#1d3247;--warn:#f5cf8a;--warn-soft:#3a2c14;--bad:#ff8a80;--ok:#7fd6a4;--ok-soft:#173326;--m-mid:#f5cf8a;color-scheme:dark}}
+body{margin:0;background:var(--bg)}
+button{font-family:inherit;cursor:pointer}
+a{text-decoration:none}
+</style>
+</helmet>
+<div style="width:1440px;height:880px;display:flex;background:var(--bg);color:var(--fg);font:400 15px/1.5 'Onest',system-ui,sans-serif;overflow:hidden">
+
+  <div style="flex:0 0 224px;box-sizing:border-box;padding:22px 14px;background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;gap:4px">
+    <div style="display:flex;align-items:center;gap:10px;padding:2px 10px 18px">
+      <div style="width:34px;height:34px;border-radius:10px;background:#eef0f5;border:1px solid var(--line);display:flex;align-items:center;justify-content:center"><img src="/_blob/021f9ea65b2a8d125997b2aadc86e099" alt="Логотип Bogestv0" style="width:26px;height:26px;object-fit:contain"></div>
+      <div><div style="font:600 15px/1.2 'Unbounded',sans-serif">Bogestv0</div><div style="font:400 11.5px 'JetBrains Mono',monospace;color:var(--muted);margin-top:2px">MIXER</div></div>
+    </div>
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="7">
+      <a href="{{n.href}}" style="display:flex;align-items:center;gap:12px;min-height:44px;padding:0 12px;border-radius:12px;font:500 15px 'Onest',sans-serif;{{n.style}}">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{n.d}}"/></svg>{{n.name}}
+      </a>
+    </sc-for>
+    <div style="flex:1"></div>
+    <div style="display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:14px;background:var(--surface-2)">
+      <span style="align-self:flex-start;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 10px;border-radius:99px;background:var(--ok-soft);color:var(--ok)"><span style="width:7px;height:7px;border-radius:50%;background:var(--ok)"></span>Движок работает</span>
+      <span style="font:400 12px/1.5 'JetBrains Mono',monospace;color:var(--muted)">48 кГц · 256 смп<br>задержка 5.3 мс</span>
+    </div>
+  </div>
+
+  <div style="flex:1;min-width:0;box-sizing:border-box;padding:22px 24px 24px;display:flex;flex-direction:column;gap:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <h1 style="margin:0;font:600 22px/1.2 'Unbounded',sans-serif">Микшер</h1>
+        <div style="font:400 11.5px 'JetBrains Mono',monospace;color:var(--muted);margin-top:4px">8 входов · 2 микрофона и 6 виртуальных · маршруты на A1–A3 и B1–B2</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;padding:5px 14px 5px 5px;border-radius:99px;background:var(--surface);border:1px solid var(--line);font-weight:600;font-size:14px"><span style="width:30px;height:30px;border-radius:50%;background:var(--signal-soft);color:var(--signal);display:flex;align-items:center;justify-content:center;font-size:13px">B</span>Bogestv0</div>
+    </div>
+
+    <div style="background:var(--signal-soft);border-radius:20px;padding:14px 22px;display:flex;gap:16px;align-items:center;justify-content:space-between">
+      <div style="min-width:0">
+        <h2 style="margin:0 0 2px;font:600 12px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Сцены</h2>
+        <div style="font:600 18px/1.2 'Unbounded',sans-serif;margin-bottom:3px">Куда идёт звук?</div>
+        <div style="font-size:13px;color:var(--muted)">Игры и музыка в наушники и на стрим; Discord только в наушники; оба микрофона на стрим и звонки.</div>
+      </div>
+      <div style="display:flex;gap:10px">
+        <sc-for list="{{scenes}}" as="sc" hint-placeholder-count="3"><button style="min-height:44px;padding:9px 18px;border-radius:12px;font:500 14px 'Onest',sans-serif;{{sc.style}}">{{sc.name}}</button></sc-for>
+      </div>
+    </div>
+
+    <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:24px">
+        <h2 style="margin:0;width:281px;font:600 12px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Железные входы · микрофоны</h2>
+        <h2 style="margin:0;font:600 12px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Виртуальные входы · звук из программ</h2>
+      </div>
+      <div style="flex:1;min-height:0;display:flex;gap:10px">
+        <sc-for list="{{strips}}" as="s" hint-placeholder-count="6">
+          <div style="flex:1;min-width:0;margin-left:{{s.ml}}px;box-sizing:border-box;background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:9px;display:flex;flex-direction:column;gap:9px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+              <span style="flex:1;min-width:0;font:600 14px 'Onest',sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{s.name}}</span><a href="Strips.dc.html" aria-label="Настройки дорожки {{s.name}}" style="flex:0 0 28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:8px;color:var(--muted)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M12 2v3M12 19v3M2 12h3M19 12h3M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6z"/></svg></a>
+              
+            </div>
+
+            <div style="height:150px;box-sizing:border-box;padding:10px;border-radius:12px;background:var(--surface-2);display:flex;flex-direction:column;gap:7px">
+              <sc-if value="{{s.isMic}}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-direction:column;gap:6px">
+                  <div style="display:flex;justify-content:space-between;align-items:baseline">
+                    <h2 style="margin:0;font:600 11px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Шум</h2>
+                    <span style="font:500 12px 'JetBrains Mono',monospace;color:var(--signal)">{{s.nsName}}</span>
+                  </div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px">
+                    <button aria-pressed="{{s.n0On}}" style="flex:1;height:28px;border-radius:8px;padding:0;font:500 11px 'JetBrains Mono',monospace;{{s.n0}}">Выкл</button>
+                    <button aria-pressed="{{s.n1On}}" style="flex:1;height:28px;border-radius:8px;padding:0;font:500 11px 'JetBrains Mono',monospace;{{s.n1}}">Мяг</button>
+                    <button aria-pressed="{{s.n2On}}" style="flex:1;height:28px;border-radius:8px;padding:0;font:500 11px 'JetBrains Mono',monospace;{{s.n2}}">Сил</button>
+                    <button aria-pressed="{{s.n3On}}" style="flex:1;height:28px;border-radius:8px;padding:0;font:500 11px 'JetBrains Mono',monospace;{{s.n3}}">Макс</button>
+                  </div>
+                </div>
+              </sc-if>
+              <sc-if value="{{s.notMic}}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;flex-direction:column;gap:2px">
+                  <h2 style="margin:0;font:600 11px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Источник</h2>
+                  <span style="font:500 14px 'Onest',sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{s.source}}</span>
+                </div>
+              </sc-if>
+              <div style="display:flex;justify-content:space-around;margin-top:auto">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
+                  <div style="width:38px;height:38px;border-radius:50%;background:conic-gradient(from -135deg,var(--signal) 0deg,var(--signal) {{s.k1Deg}}deg,var(--line) {{s.k1Deg}}deg,var(--line) 270deg,transparent 270deg);display:flex;align-items:center;justify-content:center"><div style="width:30px;height:30px;border-radius:50%;background:var(--surface);position:relative;transform:rotate({{s.k1Rot}}deg)"><div style="position:absolute;left:14px;top:3px;width:2px;height:9px;border-radius:1px;background:var(--fg)"></div></div></div>
+                  <span style="font-size:12px;color:var(--muted)">{{s.k1Label}}</span>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
+                  <div style="width:38px;height:38px;border-radius:50%;background:conic-gradient(from -135deg,var(--signal) 0deg,var(--signal) {{s.k2Deg}}deg,var(--line) {{s.k2Deg}}deg,var(--line) 270deg,transparent 270deg);display:flex;align-items:center;justify-content:center"><div style="width:30px;height:30px;border-radius:50%;background:var(--surface);position:relative;transform:rotate({{s.k2Rot}}deg)"><div style="position:absolute;left:14px;top:3px;width:2px;height:9px;border-radius:1px;background:var(--fg)"></div></div></div>
+                  <span style="font-size:12px;color:var(--muted)">{{s.k2Label}}</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <h2 style="margin:0;font:600 11px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Отправить на</h2>
+              <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px">
+                <button aria-pressed="{{s.a1On}}" style="min-height:34px;border-radius:10px;padding:0;font:500 13px 'JetBrains Mono',monospace;{{s.a1}}">A1</button>
+                <button aria-pressed="{{s.a2On}}" style="min-height:34px;border-radius:10px;padding:0;font:500 13px 'JetBrains Mono',monospace;{{s.a2}}">A2</button>
+                <button aria-pressed="{{s.a3On}}" style="min-height:34px;border-radius:10px;padding:0;font:500 13px 'JetBrains Mono',monospace;{{s.a3}}">A3</button>
+                <button aria-pressed="{{s.b1On}}" style="min-height:34px;border-radius:10px;padding:0;font:500 13px 'JetBrains Mono',monospace;{{s.b1}}">B1</button>
+                <button aria-pressed="{{s.b2On}}" style="min-height:34px;border-radius:10px;padding:0;font:500 13px 'JetBrains Mono',monospace;{{s.b2}}">B2</button>
+              </div>
+            </div>
+
+            <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:6px">
+              <div style="text-align:center;font:500 13px 'JetBrains Mono',monospace;color:var(--signal)">{{s.tag}} · {{s.dbText}}</div>
+              <div style="flex:1;min-height:0;display:flex;gap:8px;padding:0 14px">
+                <div style="width:8px;border-radius:4px;position:relative;overflow:hidden;background:linear-gradient(to top,var(--ok) 0%,var(--ok) 60%,var(--m-mid) 82%,var(--bad) 100%)"><div style="position:absolute;left:0;right:0;top:0;height:{{s.meterL}}%;background:var(--surface-2)"></div></div>
+                <div style="flex:1;position:relative"><div style="position:absolute;left:50%;top:0;bottom:0;width:4px;margin-left:-2px;border-radius:2px;background:var(--line)"></div>
+                  <div style="position:absolute;left:-4px;right:-4px;bottom:calc({{s.pos}}% - 17px);height:34px;border-radius:10px;background:var(--surface);border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.14);box-sizing:border-box;display:flex;align-items:center;justify-content:center;opacity:{{s.capOpacity}}"><div style="width:60%;height:3px;border-radius:2px;background:var(--signal)"></div></div>
+                </div>
+                <div style="width:8px;border-radius:4px;position:relative;overflow:hidden;background:linear-gradient(to top,var(--ok) 0%,var(--ok) 60%,var(--m-mid) 82%,var(--bad) 100%)"><div style="position:absolute;left:0;right:0;top:0;height:{{s.meterR}}%;background:var(--surface-2)"></div></div>
+              </div>
+            </div>
+
+            <div style="display:flex;gap:6px">
+              <button aria-pressed="{{s.muted}}" style="flex:1;min-height:38px;border-radius:12px;font:500 13px 'Onest',sans-serif;{{s.muteStyle}}">Mute</button>
+              <button aria-pressed="false" style="flex:1;min-height:38px;border-radius:12px;font:500 13px 'Onest',sans-serif;background:none;color:var(--fg);border:1px solid var(--line)">Solo</button>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":880}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const pos = (db) => Math.max(0, Math.min(100, (db + 48) / 60 * 100));
+    const fmt = (db) => (db > 0 ? '+' : '') + db.toFixed(1) + ' дБ';
+    const chip = (on, tone) => on
+      ? 'background:var(--' + tone + '-soft);color:var(--' + tone + ');border:1px solid var(--' + tone + ');box-shadow:0 0 0 1px var(--' + tone + ')'
+      : 'background:none;color:var(--muted);border:1px solid var(--line)';
+    const nsChip = (on) => on
+      ? 'background:var(--signal);color:var(--signal-ink);border:1px solid var(--signal)'
+      : 'background:var(--surface);color:var(--fg);border:1px solid var(--line)';
+    const nsNames = ['Выкл', 'Мягкое', 'Сильное', 'Максимум'];
+    const R = (a1, a2, a3, b1, b2) => [a1, a2, a3, b1, b2];
+    const defs = [
+      { name: 'Микрофон 1', tag: 'HW1', mic: true, ns: 2, db: -3, l: 62, r: 58, k1: ['Гейт', .35], k2: ['Компр.', .55], r5: R(0, 0, 0, 1, 1) },
+      { name: 'Микрофон 2', tag: 'HW2', mic: true, ns: 1, db: -5, l: 48, r: 47, k1: ['Гейт', .4], k2: ['Компр.', .5], r5: R(0, 0, 0, 1, 1) },
+      { name: 'Игры', tag: 'V1', ml: 14, src: 'Все игры', db: -6, l: 74, r: 70, k1: ['Бас', .5], k2: ['ВЧ', .5], r5: R(0, 1, 0, 1, 0) },
+      { name: 'Музыка', tag: 'V2', src: 'Spotify', db: -14, l: 46, r: 44, k1: ['Бас', .62], k2: ['ВЧ', .45], r5: R(0, 1, 0, 1, 0) },
+      { name: 'Discord', tag: 'V3', src: 'Discord', db: -4, l: 55, r: 51, k1: ['Бас', .4], k2: ['ВЧ', .58], r5: R(0, 1, 0, 0, 0) },
+      { name: 'Браузер', tag: 'V4', src: 'Chrome, YouTube', db: -9, l: 38, r: 36, k1: ['Бас', .5], k2: ['ВЧ', .5], r5: R(0, 1, 0, 0, 0) },
+      { name: 'Донаты', tag: 'V5', src: 'Оповещения о донатах', db: -8, l: 30, r: 28, k1: ['Бас', .5], k2: ['ВЧ', .5], r5: R(0, 1, 0, 1, 0) },
+      { name: 'Браузер 2', tag: 'V6', src: 'Firefox', db: -12, l: 22, r: 21, k1: ['Бас', .5], k2: ['ВЧ', .5], r5: R(0, 1, 0, 0, 0) }
+    ];
+    const strips = defs.map((d) => {
+      const o = {
+        name: d.name, tag: d.tag, ml: d.ml || 0, source: d.src || '', isMic: !!d.mic, notMic: !d.mic,
+        nsName: nsNames[d.ns || 0],
+        k1Label: d.k1[0], k1Deg: Math.round(d.k1[1] * 270), k1Rot: Math.round(-135 + d.k1[1] * 270),
+        k2Label: d.k2[0], k2Deg: Math.round(d.k2[1] * 270), k2Rot: Math.round(-135 + d.k2[1] * 270),
+        dbText: fmt(d.db), pos: pos(d.db), capOpacity: 1,
+        meterL: Math.round(100 - d.l), meterR: Math.round(100 - d.r),
+        muted: false, muteStyle: 'background:none;color:var(--fg);border:1px solid var(--line)'
+      };
+      [0, 1, 2, 3].forEach((i) => { o['n' + i] = nsChip(d.ns === i); o['n' + i + 'On'] = d.ns === i; });
+      ['a1', 'a2', 'a3', 'b1', 'b2'].forEach((k, i) => { o[k] = chip(!!d.r5[i], i < 3 ? 'signal' : 'warn'); o[k + 'On'] = !!d.r5[i]; });
+      return o;
+    });
+    const navDefs = [
+      ['Микшер', 'M6 4v16M12 4v16M18 4v16', 'Main.dc.html', 1], ['Выходы', 'M4 9v6h4l5 4V5L8 9H4zM16.5 8.5a5 5 0 0 1 0 7', '', 0],
+      ['Сцены', 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z', 'Scenes.dc.html', 0], ['Эффекты', 'M3 12h3l2-6 4 12 3-9 2 3h4', 'Effects.dc.html', 0],
+      ['Запись', 'M12 4a8 8 0 1 0 0 16a8 8 0 1 0 0-16z', 'Record.dc.html', 0], ['Устройства', 'M7 3h10a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3zM12 11a3 3 0 1 0 0 6a3 3 0 1 0 0-6z', '', 0],
+      ['Настройки', 'M12 2v3M12 19v3M2 12h3M19 12h3M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6z', 'Strips.dc.html', 0]
+    ];
+    const nav = navDefs.map((n) => ({ name: n[0], d: n[1], href: n[2] || '#', style: n[3] ? 'background:var(--signal-soft);color:var(--signal);font-weight:600' : 'background:none;color:var(--muted)' }));
+    const scenes = ['Играю и стримлю', 'Звонок', 'Всё в колонки'].map((n, i) => ({
+      name: n, style: i === 0 ? 'background:var(--signal);color:var(--signal-ink);border:1px solid var(--signal)' : 'background:var(--surface);color:var(--signal);border:1px solid transparent'
+    }));
+    return { strips, nav, scenes };
+  }
+}
+</script>
+</body>
+</html>

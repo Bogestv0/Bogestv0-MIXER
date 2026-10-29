@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bogestv0 MIXER — Выходы</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+:root{--bg:#f1f2f6;--surface:#fff;--surface-2:#eef0f5;--line:#e3e5ea;--fg:#0b0b0c;--muted:#667080;--signal:#1f77bd;--signal-ink:#fff;--signal-soft:#e6f1fb;--warn:#8a5a00;--warn-soft:#fdf1d8;--bad:#b3261e;--ok:#1a7f4b;--ok-soft:#e3f5ea;--m-mid:#d9a21b;--f-display:'Unbounded','Onest',system-ui,sans-serif;--f-body:'Onest',system-ui,sans-serif;--f-mono:'JetBrains Mono',ui-monospace,monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#181818;--surface:#212121;--surface-2:#2a2a2a;--line:#2f2f2f;--fg:#f5f5f5;--muted:#a3a9b3;--signal:#6ab3f3;--signal-ink:#0b1a2a;--signal-soft:#1d3247;--warn:#f5cf8a;--warn-soft:#3a2c14;--bad:#ff8a80;--ok:#7fd6a4;--ok-soft:#173326;--m-mid:#f5cf8a;color-scheme:dark}}
+body{margin:0;background:var(--bg)}
+button{font-family:inherit;cursor:pointer}
+button:focus-visible,a:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+html,body{height:100%;overflow:hidden}
+</style>
+<script src="dc.js"></script>
+</head>
+<body>
+<template id="tpl">
+<div style="width:100vw;height:100vh;display:flex;background:var(--bg);color:var(--fg);font:400 15px/1.5 var(--f-body);overflow:hidden">
+
+  <!-- SIDEBAR -->
+  <div style="flex:0 0 224px;box-sizing:border-box;padding:22px 14px;background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;gap:4px">
+    <div style="display:flex;align-items:center;gap:10px;padding:2px 10px 18px">
+      <div style="width:34px;height:34px;border-radius:10px;background:#eef0f5;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <img src="logo.png" alt="Логотип Bogestv0" style="width:26px;height:26px;object-fit:contain">
+      </div>
+      <div>
+        <div style="font:600 15px/1.2 var(--f-display)">Bogestv0</div>
+        <div style="font:400 11.5px var(--f-mono);color:var(--muted);margin-top:2px">MIXER</div>
+      </div>
+    </div>
+
+    <a href="main.html" style="display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;min-height:44px;padding:0 12px;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-decoration:none">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M6 4v16M12 4v16M18 4v16"/><circle cx="6" cy="14" r="2" fill="currentColor"/><circle cx="12" cy="8" r="2" fill="currentColor"/><circle cx="18" cy="15" r="2" fill="currentColor"/></svg>
+      Микшер
+    </a>
+    <button aria-current="page" style="display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:12px;background:var(--signal-soft);color:var(--signal);font:600 15px var(--f-body);text-align:left">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>
+      Выходы
+    </button>
+    <button style="display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-align:left">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="7" height="7" rx="2"/><rect x="14" y="4" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>
+      Сцены
+    </button>
+    <button style="display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-align:left">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h3l2-6 4 12 3-9 2 3h4"/></svg>
+      Эффекты
+    </button>
+    <button style="display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-align:left">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
+      Запись
+    </button>
+    <a href="devices.html" style="display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;min-height:44px;padding:0 12px;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-decoration:none">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="3"/><circle cx="12" cy="14" r="3.5"/><circle cx="12" cy="7" r="1"/></svg>
+      Устройства
+    </a>
+    <a href="settings.html" style="display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;min-height:44px;padding:0 12px;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-decoration:none">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>
+      Настройки
+    </a>
+
+    <div style="flex:1"></div>
+
+    <div style="display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:14px;background:var(--surface-2)">
+      <span style="align-self:flex-start;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 10px;border-radius:99px;background:var(--ok-soft);color:var(--ok)">
+        <span style="width:7px;height:7px;border-radius:50%;background:var(--ok)"></span>Движок работает
+      </span>
+      <span style="font:400 12px/1.5 var(--f-mono);color:var(--muted)">48 кГц · 256 смп<br>задержка 5.3 мс</span>
+    </div>
+  </div>
+
+  <!-- CONTENT -->
+  <div style="flex:1;min-width:0;box-sizing:border-box;padding:22px 24px 24px;display:flex;flex-direction:column;gap:14px">
+
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <div>
+        <h1 style="margin:0;font:600 22px/1.2 var(--f-display)">Выходы</h1>
+        <div style="font:400 11.5px var(--f-mono);color:var(--muted);margin-top:4px">A1–A3 · B1–B2</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;padding:5px 14px 5px 5px;border-radius:99px;background:var(--surface);border:1px solid var(--line);font-weight:600;font-size:14px">
+        <span style="width:30px;height:30px;border-radius:50%;background:var(--signal-soft);color:var(--signal);display:flex;align-items:center;justify-content:center;font-size:13px">B</span>
+        <span>Bogestv0</span>
+      </div>
+    </div>
+
+    <div style="background:var(--signal-soft);border-radius:20px;padding:18px 22px;display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between">
+      <div style="min-width:0">
+        <div style="font:600 20px/1.2 var(--f-display);margin-bottom:4px">Звучание выходов</div>
+        <div style="font-size:13px;color:var(--muted)">Общая громкость и тембр каждого выхода. Маршруты дорожек остаются на странице «Микшер».</div>
+      </div>
+      <a href="devices.html" style="display:inline-flex;align-items:center;min-height:44px;box-sizing:border-box;padding:9px 18px;border-radius:12px;border:1px solid var(--signal);background:var(--signal);color:var(--signal-ink);font:500 14px var(--f-body);text-decoration:none">Выбрать устройства</a>
+    </div>
+
+    <div style="flex:1;min-height:0;display:flex;gap:14px">
+
+      <div style="flex:3;min-width:0;display:flex;flex-direction:column;gap:8px">
+        <h2 style="margin:0;font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">A · устройства</h2>
+        <div style="flex:1;min-height:0;display:flex;gap:8px">
+          <sc-for list="{{aBuses}}" as="m">
+            <div style="flex:1;min-width:0;box-sizing:border-box;background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <span style="align-self:flex-start;font:600 12.5px var(--f-mono);padding:3px 10px;border-radius:99px;background:var(--signal-soft);color:var(--signal)">{{m.id}}</span>
+                <span style="font:600 15px/1.2 var(--f-body)">{{m.role}}</span>
+                <span style="font-size:12px;line-height:1.35;color:var(--muted);min-height:32px">{{m.device}}</span>
+              </div>
+              <div style="height:26px;border-radius:9px;background:var(--bg);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font:500 13px var(--f-mono);font-variant-numeric:tabular-nums">{{m.dbText}}</div>
+              <div style="flex-grow:1;min-height:0;display:flex;justify-content:center;gap:7px">
+                <div style="position:relative;width:26px">
+                  <span style="position:absolute;right:0;bottom:100%;transform:translateY(50%);font:400 10px var(--f-mono);color:var(--muted)">+12</span>
+                  <span style="position:absolute;right:0;bottom:80%;transform:translateY(50%);font:500 10px var(--f-mono);color:var(--fg)">0</span>
+                  <span style="position:absolute;right:0;bottom:63.3%;transform:translateY(50%);font:400 10px var(--f-mono);color:var(--muted)">-10</span>
+                  <span style="position:absolute;right:0;bottom:46.7%;transform:translateY(50%);font:400 10px var(--f-mono);color:var(--muted)">-20</span>
+                  <span style="position:absolute;right:0;bottom:30%;transform:translateY(50%);font:400 10px var(--f-mono);color:var(--muted)">-30</span>
+                  <span style="position:absolute;right:0;bottom:13.3%;transform:translateY(50%);font:400 10px var(--f-mono);color:var(--muted)">-40</span>
+                </div>
+                <div style="display:flex;gap:3px">
+                  <div style="position:relative;width:8px;border-radius:3px;background:var(--surface-2);overflow:hidden">
+                    <div style="position:absolute;inset:0;background:linear-gradient(to top,var(--ok) 0%,var(--ok) 62%,var(--m-mid) 62%,var(--m-mid) 84%,var(--bad) 84%,var(--bad) 100%);clip-path:inset({{m.meterL}}% 0 0 0)"></div>
+                    <div style="position:absolute;inset:0;background:repeating-linear-gradient(to bottom,transparent 0,transparent 4px,var(--surface) 4px,var(--surface) 6px)"></div>
+                  </div>
+                  <div style="position:relative;width:8px;border-radius:3px;background:var(--surface-2);overflow:hidden">
+                    <div style="position:absolute;inset:0;background:linear-gradient(to top,var(--ok) 0%,var(--ok) 62%,var(--m-mid) 62%,var(--m-mid) 84%,var(--bad) 84%,var(--bad) 100%);clip-path:inset({{m.meterR}}% 0 0 0)"></div>
+                    <div style="position:absolute;inset:0;background:repeating-linear-gradient(to bottom,transparent 0,transparent 4px,var(--surface) 4px,var(--surface) 6px)"></div>
+                  </div>
+                </div>
+                <div style="position:relative;width:40px">
+                  <div style="position:absolute;left:50%;top:0;bottom:0;width:6px;margin-left:-3px;border-radius:3px;background:var(--surface-2);border:1px solid var(--line);box-sizing:border-box"></div>
+                  <div style="position:absolute;left:1px;right:1px;bottom:calc({{m.pos}}% - 17px);height:34px;border-radius:10px;background:var(--surface);border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.14);box-sizing:border-box;display:flex;align-items:center;justify-content:center">
+                    <div style="width:60%;height:3px;border-radius:2px;background:var(--signal)"></div>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;justify-content:space-around;padding:10px;border-radius:12px;background:var(--surface-2)">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
+                  <div style="width:38px;height:38px;border-radius:50%;background:conic-gradient(from -135deg,var(--signal) 0deg,var(--signal) {{m.k1Deg}}deg,var(--line) {{m.k1Deg}}deg,var(--line) 270deg,transparent 270deg);display:flex;align-items:center;justify-content:center">
+                    <div style="width:30px;height:30px;border-radius:50%;background:var(--surface);position:relative;transform:rotate({{m.k1Rot}}deg)"><div style="position:absolute;left:14px;top:3px;width:2px;height:9px;border-radius:1px;background:var(--fg)"></div></div>
+                  </div>
+                  <span style="font-size:12px;color:var(--muted)">Бас</span>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
+                  <div style="width:38px;height:38px;border-radius:50%;background:conic-gradient(from -135deg,var(--signal) 0deg,var(--signal) {{m.k2Deg}}deg,var(--line) {{m.k2Deg}}deg,var(--line) 270deg,transparent 270deg);display:flex;align-items:center;justify-content:center">
+                    <div style="width:30px;height:30px;border-radius:50%;background:var(--surface);position:relative;transform:rotate({{m.k2Rot}}deg)"><div style="position:absolute;left:14px;top:3px;width:2px;height:9px;border-radius:1px;background:var(--fg)"></div></div>
+                  </div>
+                  <span style="font-size:12px;color:var(--muted)">ВЧ</span>
+                </div>
+              </div>
+              <button style="min-height:38px;border-radius:12px;font:500 13px var(--f-body);background:none;color:var(--fg);border:1px solid var(--line)">Mute</button>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="flex:2;min-width:0;display:flex;flex-direction:column;gap:8px">
+        <h2 style="margin:0;font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">B · виртуальные микрофоны</h2>
+        <div style="flex:1;min-height:0;display:flex;gap:8px">
+          <sc-for list="{{bBuses}}" as="m">
+            <div style="flex:1;min-width:0;box-sizing:border-box;background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <span style="align-self:flex-start;font:600 12.5px var(--f-mono);padding:3px 10px;border-radius:99px;background:var(--warn-soft);color:var(--warn)">{{m.id}}</span>
+                <span style="font:600 15px/1.2 var(--f-body)">{{m.role}}</span>
+                <span style="font-size:12px;line-height:1.35;color:var(--muted);min-height:32px">{{m.device}}</span>
+              </div>
+              <div style="height:26px;border-radius:9px;background:var(--bg);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font:500 13px var(--f-mono);font-variant-numeric:tabular-nums">{{m.dbText}}</div>
+              <div style="flex-grow:1;min-height:0;display:flex;justify-content:center;gap:7px">
+                <div style="position:relative;width:26px">
+                  <span style="position:absolute;right:0;bottom:100%;transform:translateY(50%);font:400 10px var(--f-mono);color:var(--muted)">+12</span>
+                  <span style="position:absolute;right:0;bottom:80%;transform:translateY(50%);font:500 10px var(--f-mono);color:var(--fg)">0</span>
+                  <span style="position:absolute;right:0;bottom:63.3%;transform:translateY(50%);font:400 10px var(--f-mono);color:var(--muted)">-10</span>
+                  <span style="position:absolute;right:0;bottom:46.7%;transform:translateY(50%);font:400 10px var(--f-mono);color:var(--muted)">-20</span>
+                  <span style="position:absolute;right:0;bottom:30%;transform:translateY(50%);font:400 10px var(--f-mono);color:var(--muted)">-30</span>
+                  <span style="position:absolute;right:0;bottom:13.3%;transform:translateY(50%);font:400 10px var(--f-mono);color:var(--muted)">-40</span>
+                </div>
+                <div style="display:flex;gap:3px">
+                  <div style="position:relative;width:8px;border-radius:3px;background:var(--surface-2);overflow:hidden">
+                    <div style="position:absolute;inset:0;background:linear-gradient(to top,var(--ok) 0%,var(--ok) 62%,var(--m-mid) 62%,var(--m-mid) 84%,var(--bad) 84%,var(--bad) 100%);clip-path:inset({{m.meterL}}% 0 0 0)"></div>
+                    <div style="position:absolute;inset:0;background:repeating-linear-gradient(to bottom,transparent 0,transparent 4px,var(--surface) 4px,var(--surface) 6px)"></div>
+                  </div>
+                  <div style="position:relative;width:8px;border-radius:3px;background:var(--surface-2);overflow:hidden">
+                    <div style="position:absolute;inset:0;background:linear-gradient(to top,var(--ok) 0%,var(--ok) 62%,var(--m-mid) 62%,var(--m-mid) 84%,var(--bad) 84%,var(--bad) 100%);clip-path:inset({{m.meterR}}% 0 0 0)"></div>
+                    <div style="position:absolute;inset:0;background:repeating-linear-gradient(to bottom,transparent 0,transparent 4px,var(--surface) 4px,var(--surface) 6px)"></div>
+                  </div>
+                </div>
+                <div style="position:relative;width:40px">
+                  <div style="position:absolute;left:50%;top:0;bottom:0;width:6px;margin-left:-3px;border-radius:3px;background:var(--surface-2);border:1px solid var(--line);box-sizing:border-box"></div>
+                  <div style="position:absolute;left:1px;right:1px;bottom:calc({{m.pos}}% - 17px);height:34px;border-radius:10px;background:var(--surface);border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.14);box-sizing:border-box;display:flex;align-items:center;justify-content:center">
+                    <div style="width:60%;height:3px;border-radius:2px;background:var(--warn)"></div>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;justify-content:space-around;padding:10px;border-radius:12px;background:var(--surface-2)">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
+                  <div style="width:38px;height:38px;border-radius:50%;background:conic-gradient(from -135deg,var(--signal) 0deg,var(--signal) {{m.k1Deg}}deg,var(--line) {{m.k1Deg}}deg,var(--line) 270deg,transparent 270deg);display:flex;align-items:center;justify-content:center">
+                    <div style="width:30px;height:30px;border-radius:50%;background:var(--surface);position:relative;transform:rotate({{m.k1Rot}}deg)"><div style="position:absolute;left:14px;top:3px;width:2px;height:9px;border-radius:1px;background:var(--fg)"></div></div>
+                  </div>
+                  <span style="font-size:12px;color:var(--muted)">Бас</span>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
+                  <div style="width:38px;height:38px;border-radius:50%;background:conic-gradient(from -135deg,var(--signal) 0deg,var(--signal) {{m.k2Deg}}deg,var(--line) {{m.k2Deg}}deg,var(--line) 270deg,transparent 270deg);display:flex;align-items:center;justify-content:center">
+                    <div style="width:30px;height:30px;border-radius:50%;background:var(--surface);position:relative;transform:rotate({{m.k2Rot}}deg)"><div style="position:absolute;left:14px;top:3px;width:2px;height:9px;border-radius:1px;background:var(--fg)"></div></div>
+                  </div>
+                  <span style="font-size:12px;color:var(--muted)">ВЧ</span>
+                </div>
+              </div>
+              <button style="min-height:38px;border-radius:12px;font:500 13px var(--f-body);background:none;color:var(--fg);border:1px solid var(--line)">Mute</button>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</template>
+<div id="app"></div>
+<script>
+class Component extends DCLogic {
+  renderVals() {
+    const pos = (db) => Math.max(0, Math.min(100, (db + 48) / 60 * 100));
+    const fmt = (db) => (db > 0 ? '+' : '') + db.toFixed(1) + ' дБ';
+    const top = (lvl) => Math.round(100 - lvl);
+    const mk = (id, role, device, db, l, r, k1, k2) => ({
+      id, role, device, dbText: fmt(db), pos: pos(db),
+      meterL: top(l), meterR: top(r),
+      k1Deg: Math.round(k1 * 270), k1Rot: Math.round(-135 + k1 * 270),
+      k2Deg: Math.round(k2 * 270), k2Rot: Math.round(-135 + k2 * 270)
+    });
+    return {
+      aBuses: [
+        mk('A1', 'Колонки',  'Динамики (Realtek)',     -8, 0,  0,  0.5,  0.5),
+        mk('A2', 'Наушники', 'USB PnP Audio Device',   -2, 74, 70, 0.55, 0.5),
+        mk('A3', 'Запасной', 'Не выбрано',              0, 0,  0,  0.5,  0.5)
+      ],
+      bBuses: [
+        mk('B1', 'Для стрима',  'Виртуальный микрофон → OBS',     0, 74, 70, 0.5, 0.5),
+        mk('B2', 'Для звонков', 'Виртуальный микрофон → Discord', 0, 62, 58, 0.5, 0.5)
+      ]
+    };
+  }
+}
+</script>
+<script>DC.mount(Component);</script>
+<script src="app.js"></script>
+</body>
+</html>

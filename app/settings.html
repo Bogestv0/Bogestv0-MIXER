@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bogestv0 MIXER — Настройки</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+:root{--bg:#f1f2f6;--surface:#fff;--surface-2:#eef0f5;--line:#e3e5ea;--fg:#0b0b0c;--muted:#667080;--signal:#1f77bd;--signal-ink:#fff;--signal-soft:#e6f1fb;--warn:#8a5a00;--warn-soft:#fdf1d8;--bad:#b3261e;--ok:#1a7f4b;--ok-soft:#e3f5ea;--f-display:'Unbounded','Onest',system-ui,sans-serif;--f-body:'Onest',system-ui,sans-serif;--f-mono:'JetBrains Mono',ui-monospace,monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#181818;--surface:#212121;--surface-2:#2a2a2a;--line:#2f2f2f;--fg:#f5f5f5;--muted:#a3a9b3;--signal:#6ab3f3;--signal-ink:#0b1a2a;--signal-soft:#1d3247;--warn:#f5cf8a;--warn-soft:#3a2c14;--bad:#ff8a80;--ok:#7fd6a4;--ok-soft:#173326;color-scheme:dark}}
+body{margin:0;background:var(--bg)}
+button{font-family:inherit;cursor:pointer}
+button:focus-visible,a:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+html,body{height:100%;overflow:hidden}
+</style>
+<script src="dc.js"></script>
+</head>
+<body>
+<template id="tpl">
+<div style="width:100vw;height:100vh;display:flex;background:var(--bg);color:var(--fg);font:400 15px/1.5 var(--f-body);overflow:hidden">
+
+  <!-- SIDEBAR -->
+  <div style="flex:0 0 224px;box-sizing:border-box;padding:22px 14px;background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;gap:4px">
+    <div style="display:flex;align-items:center;gap:10px;padding:2px 10px 18px">
+      <div style="width:34px;height:34px;border-radius:10px;background:#eef0f5;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <img src="logo.png" alt="Логотип Bogestv0" style="width:26px;height:26px;object-fit:contain">
+      </div>
+      <div>
+        <div style="font:600 15px/1.2 var(--f-display)">Bogestv0</div>
+        <div style="font:400 11.5px var(--f-mono);color:var(--muted);margin-top:2px">MIXER</div>
+      </div>
+    </div>
+
+    <a href="main.html" style="display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;min-height:44px;padding:0 12px;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-decoration:none">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M6 4v16M12 4v16M18 4v16"/><circle cx="6" cy="14" r="2" fill="currentColor"/><circle cx="12" cy="8" r="2" fill="currentColor"/><circle cx="18" cy="15" r="2" fill="currentColor"/></svg>
+      Микшер
+    </a>
+    <a href="outputs.html" style="display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;min-height:44px;padding:0 12px;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-decoration:none">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>
+      Выходы
+    </a>
+    <button style="display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-align:left">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="7" height="7" rx="2"/><rect x="14" y="4" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>
+      Сцены
+    </button>
+    <button style="display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-align:left">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h3l2-6 4 12 3-9 2 3h4"/></svg>
+      Эффекты
+    </button>
+    <button style="display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-align:left">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
+      Запись
+    </button>
+    <a href="devices.html" style="display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;min-height:44px;padding:0 12px;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-decoration:none">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="3"/><circle cx="12" cy="14" r="3.5"/><circle cx="12" cy="7" r="1"/></svg>
+      Устройства
+    </a>
+    <button aria-current="page" style="display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:12px;background:var(--signal-soft);color:var(--signal);font:600 15px var(--f-body);text-align:left">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>
+      Настройки
+    </button>
+
+    <div style="flex:1"></div>
+
+    <div style="display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:14px;background:var(--surface-2)">
+      <span style="align-self:flex-start;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 10px;border-radius:99px;background:var(--ok-soft);color:var(--ok)">
+        <span style="width:7px;height:7px;border-radius:50%;background:var(--ok)"></span>Движок работает
+      </span>
+      <span style="font:400 12px/1.5 var(--f-mono);color:var(--muted)">48 кГц · 256 смп<br>задержка 5.3 мс</span>
+    </div>
+  </div>
+
+  <!-- CONTENT -->
+  <div style="flex:1;min-width:0;box-sizing:border-box;padding:22px 24px 24px;display:flex;flex-direction:column;gap:14px">
+
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <div>
+        <h1 style="margin:0;font:600 22px/1.2 var(--f-display)">Настройки</h1>
+        <div style="font:400 11.5px var(--f-mono);color:var(--muted);margin-top:4px">программа · запуск · фон</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;padding:5px 14px 5px 5px;border-radius:99px;background:var(--surface);border:1px solid var(--line);font-weight:600;font-size:14px">
+        <span style="width:30px;height:30px;border-radius:50%;background:var(--signal-soft);color:var(--signal);display:flex;align-items:center;justify-content:center;font-size:13px">B</span>
+        <span>Bogestv0</span>
+      </div>
+    </div>
+
+    <!-- hero -->
+    <div style="background:var(--signal-soft);border-radius:20px;padding:18px 22px;display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between">
+      <div style="min-width:0">
+        <div style="font:600 20px/1.2 var(--f-display);margin-bottom:4px">Микшер помнит твои настройки</div>
+        <div style="font-size:13px;color:var(--muted)">Маршруты, громкость, усиление микрофона и выбранные устройства возвращаются при следующем запуске.</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 10px;border-radius:99px;{{statusStyle}}">{{statusText}}</span>
+        <button onClick="{{save}}" style="min-height:44px;padding:9px 18px;border-radius:12px;border:1px solid var(--signal);background:var(--signal);color:var(--signal-ink);font:500 14px var(--f-body)">Сохранить настройки</button>
+      </div>
+    </div>
+
+    <div style="flex:1;min-height:0;display:flex;gap:14px;overflow-y:auto;align-items:flex-start">
+
+      <!-- LEFT -->
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:14px">
+
+        <div style="background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:4px">
+          <h2 style="margin:0 0 8px;font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Подключение устройств</h2>
+          <sc-for list="{{connRows}}" as="r">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0">
+              <div style="min-width:0">
+                <div style="font-weight:600;line-height:1.3">{{r.title}}</div>
+                <div style="font-size:13px;color:var(--muted)">{{r.desc}}</div>
+              </div>
+              <button role="switch" aria-checked="{{r.on}}" aria-label="{{r.title}}" onClick="{{r.toggle}}" style="flex:0 0 46px;width:46px;height:26px;padding:0;border-radius:13px;position:relative;{{r.track}}">
+                <span style="position:absolute;top:2px;width:20px;height:20px;border-radius:50%;{{r.knob}}"></span>
+              </button>
+            </div>
+          </sc-for>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0;border-top:1px solid var(--line);opacity:{{scopeOpacity}}">
+            <div style="min-width:0">
+              <div style="font-weight:600;line-height:1.3">Какие устройства возвращать</div>
+              <div style="font-size:13px;color:var(--muted)">Микшер ждёт, пока устройство снова появится в системе.</div>
+            </div>
+            <div style="display:flex;gap:6px">
+              <sc-for list="{{scopes}}" as="sc">
+                <button onClick="{{sc.pick}}" aria-pressed="{{sc.on}}" style="min-height:36px;padding:0 14px;border-radius:10px;font:500 13px var(--f-body);white-space:nowrap;{{sc.style}}">{{sc.label}}</button>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0;border-top:1px solid var(--line)">
+            <div style="min-width:0">
+              <div style="font-weight:600;line-height:1.3">Перезапустить аудио-движок</div>
+              <div style="font-size:13px;color:var(--muted)">Если пропал звук, а переподключение не помогло.</div>
+            </div>
+            <button style="min-height:36px;padding:0 14px;border-radius:10px;background:none;color:var(--fg);border:1px solid var(--line);font:500 13px var(--f-body);white-space:nowrap;display:flex;align-items:center;gap:8px">
+              Перезапустить <span style="font:400 11.5px var(--f-mono);color:var(--muted)">Ctrl+R</span>
+            </button>
+          </div>
+        </div>
+
+        <div style="flex:1;min-height:0;background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:4px">
+          <h2 style="margin:0 0 8px;font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Сохранение</h2>
+          <sc-for list="{{saveRows}}" as="r">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0">
+              <div style="min-width:0">
+                <div style="font-weight:600;line-height:1.3">{{r.title}}</div>
+                <div style="font-size:13px;color:var(--muted)">{{r.desc}}</div>
+              </div>
+              <button role="switch" aria-checked="{{r.on}}" aria-label="{{r.title}}" onClick="{{r.toggle}}" style="flex:0 0 46px;width:46px;height:26px;padding:0;border-radius:13px;position:relative;{{r.track}}">
+                <span style="position:absolute;top:2px;width:20px;height:20px;border-radius:50%;{{r.knob}}"></span>
+              </button>
+            </div>
+          </sc-for>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0;border-top:1px solid var(--line)">
+            <div style="min-width:0">
+              <div style="font-weight:600;line-height:1.3">Файл настроек</div>
+              <div style="font:400 12.5px var(--f-mono);color:var(--muted)">bogestv0-settings.json</div>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button style="min-height:36px;padding:0 14px;border-radius:10px;background:none;color:var(--fg);border:1px solid var(--line);font:500 13px var(--f-body)">Загрузить…</button>
+              <button style="min-height:36px;padding:0 14px;border-radius:10px;background:none;color:var(--fg);border:1px solid var(--line);font:500 13px var(--f-body)">Сохранить как…</button>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0;border-top:1px solid var(--line)">
+            <div style="min-width:0">
+              <div style="font-weight:600;line-height:1.3">Сбросить все настройки</div>
+              <div style="font-size:13px;color:var(--muted)">Вернёт микшер к заводскому состоянию.</div>
+            </div>
+            <button onClick="{{reset}}" style="min-height:36px;padding:0 14px;border-radius:10px;background:none;color:var(--bad);border:1px solid var(--bad);font:500 13px var(--f-body)">Сбросить</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT -->
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:14px">
+
+        <div style="background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:4px">
+          <h2 style="margin:0 0 8px;font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Фоновый режим и окно</h2>
+          <sc-for list="{{bgRows}}" as="r">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0;border-top:{{r.border}}">
+              <div style="min-width:0">
+                <div style="font-weight:600;line-height:1.3">{{r.title}}</div>
+                <div style="font-size:13px;color:var(--muted)">{{r.desc}}</div>
+              </div>
+              <button role="switch" aria-checked="{{r.on}}" aria-label="{{r.title}}" onClick="{{r.toggle}}" style="flex:0 0 46px;width:46px;height:26px;padding:0;border-radius:13px;position:relative;{{r.track}}">
+                <span style="position:absolute;top:2px;width:20px;height:20px;border-radius:50%;{{r.knob}}"></span>
+              </button>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:4px">
+          <h2 style="margin:0 0 8px;font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Запуск</h2>
+          <sc-for list="{{startRows}}" as="r">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0">
+              <div style="min-width:0">
+                <div style="font-weight:600;line-height:1.3">{{r.title}}</div>
+                <div style="font-size:13px;color:var(--muted)">{{r.desc}}</div>
+              </div>
+              <button role="switch" aria-checked="{{r.on}}" aria-label="{{r.title}}" onClick="{{r.toggle}}" style="flex:0 0 46px;width:46px;height:26px;padding:0;border-radius:13px;position:relative;{{r.track}}">
+                <span style="position:absolute;top:2px;width:20px;height:20px;border-radius:50%;{{r.knob}}"></span>
+              </button>
+            </div>
+          </sc-for>
+        </div>
+
+        <div id="updates-card" style="background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:4px">
+          <h2 style="margin:0 0 8px;font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Обновления</h2>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0">
+            <div style="min-width:0">
+              <div style="font-weight:600;line-height:1.3">Версия <span id="upd-version" style="font-family:var(--f-mono)">0.0.1</span></div>
+              <div id="upd-status" style="font-size:13px;color:var(--muted)">Ещё не проверялось.</div>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button id="upd-check" style="min-height:36px;padding:0 14px;border-radius:10px;background:none;color:var(--fg);border:1px solid var(--line);font:500 13px var(--f-body);white-space:nowrap">Проверить сейчас</button>
+              <button id="upd-install" hidden style="min-height:36px;padding:0 14px;border-radius:10px;background:var(--signal);color:var(--signal-ink);border:1px solid var(--signal);font:500 13px var(--f-body);white-space:nowrap">Обновить</button>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0;border-top:1px solid var(--line)">
+            <div style="min-width:0">
+              <div style="font-weight:600;line-height:1.3">Проверять автоматически</div>
+              <div style="font-size:13px;color:var(--muted)">При запуске и раз в несколько часов.</div>
+            </div>
+            <button id="upd-auto" role="switch" aria-checked="true" aria-label="Проверять автоматически" style="flex:0 0 46px;width:46px;height:26px;padding:0;border-radius:13px;position:relative"><span style="position:absolute;top:2px;width:20px;height:20px;border-radius:50%"></span></button>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0;border-top:1px solid var(--line)">
+            <div style="min-width:0">
+              <div style="font-weight:600;line-height:1.3">Что нового</div>
+              <div style="font-size:13px;color:var(--muted)">Список изменений по версиям на GitHub.</div>
+            </div>
+            <button id="upd-notes" style="min-height:36px;padding:0 14px;border-radius:10px;background:none;color:var(--fg);border:1px solid var(--line);font:500 13px var(--f-body);white-space:nowrap">Открыть</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</template>
+<div id="app"></div>
+<script>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.defaults = {
+      reconnect: true, scope: 'all',
+      loadOnStart: true, autosave: true,
+      tray: true, hideOnClose: true, showOnStart: false, onTop: false, lockGui: false,
+      autostart: true
+    };
+    this.state = { ...this.defaults, saved: true };
+  }
+
+  renderVals() {
+    const st = this.state;
+    const touch = (patch) => {
+      const next = { ...patch };
+      next.saved = (patch.autosave !== undefined ? patch.autosave : st.autosave);
+      this.setState(next);
+    };
+    const sw = (key, title, desc, border) => ({
+      title, desc, border: border || 'none',
+      on: !!st[key],
+      track: st[key]
+        ? 'background:var(--signal);border:1px solid var(--signal)'
+        : 'background:var(--surface-2);border:1px solid var(--muted)',
+      knob: st[key]
+        ? 'left:22px;background:var(--signal-ink)'
+        : 'left:2px;background:var(--muted)',
+      toggle: () => touch({ [key]: !st[key] })
+    });
+    const line = '1px solid var(--line)';
+
+    const connRows = [
+      sw('reconnect', 'Переподключать устройство автоматически',
+        'Если провод отошёл или устройство выключилось, микшер сам вернёт его, когда оно снова появится.')
+    ];
+    const scopes = [
+      { id: 'a1', label: 'Только A1' },
+      { id: 'all', label: 'Все устройства' }
+    ].map((o) => ({
+      label: o.label,
+      on: st.scope === o.id,
+      style: st.scope === o.id
+        ? 'background:var(--signal);color:var(--signal-ink);border:1px solid var(--signal)'
+        : 'background:var(--surface);color:var(--fg);border:1px solid var(--line)',
+      pick: () => touch({ scope: o.id })
+    }));
+
+    const saveRows = [
+      sw('loadOnStart', 'Загружать настройки при запуске', 'Микшер стартует так, как ты его оставил.'),
+      sw('autosave', 'Сохранять изменения сразу', 'Любое действие на микшере записывается в файл без кнопки.', line)
+    ];
+
+    const bgRows = [
+      sw('tray', 'Значок в трее', 'Микшер живёт рядом с часами, и его можно открыть одним щелчком.'),
+      sw('hideOnClose', 'Закрытие окна сворачивает в трей', 'Окно скрывается, а звук продолжает работать в фоне.', line),
+      sw('showOnStart', 'Показывать окно при запуске', 'Если выключить, микшер стартует сразу в трей.', line),
+      sw('onTop', 'Поверх всех окон', 'Микшер остаётся на виду над игрой или OBS.', line),
+      sw('lockGui', 'Заблокировать интерфейс', 'Фейдеры и кнопки не сдвинутся случайно.', line)
+    ];
+    const startRows = [
+      sw('autostart', 'Запускать вместе с Windows', 'Микшер включается при входе в систему, и звук работает сразу.')
+    ];
+
+    return {
+      connRows, scopes, scopeOpacity: st.reconnect ? 1 : 0.5,
+      saveRows, bgRows, startRows,
+      statusText: st.saved ? 'Всё сохранено' : 'Есть несохранённые изменения',
+      statusStyle: st.saved ? 'background:var(--ok-soft);color:var(--ok)' : 'background:var(--warn-soft);color:var(--warn)',
+      save: () => this.setState({ saved: true }),
+      reset: () => this.setState({ ...this.defaults, saved: true })
+    };
+  }
+}
+</script>
+<script>DC.mount(Component);</script>
+<script src="app.js"></script>
+</body>
+</html>

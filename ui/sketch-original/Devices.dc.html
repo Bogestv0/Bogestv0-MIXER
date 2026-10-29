@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Bogestv0 MIXER — Устройства</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600&amp;family=Unbounded:wght@500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+:root{--bg:#f1f2f6;--surface:#fff;--surface-2:#eef0f5;--line:#e3e5ea;--fg:#0b0b0c;--muted:#667080;--signal:#1f77bd;--signal-ink:#fff;--signal-soft:#e6f1fb;--warn:#8a5a00;--warn-soft:#fdf1d8;--bad:#b3261e;--ok:#1a7f4b;--ok-soft:#e3f5ea;--f-display:'Unbounded','Onest',system-ui,sans-serif;--f-body:'Onest',system-ui,sans-serif;--f-mono:'JetBrains Mono',ui-monospace,monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#181818;--surface:#212121;--surface-2:#2a2a2a;--line:#2f2f2f;--fg:#f5f5f5;--muted:#a3a9b3;--signal:#6ab3f3;--signal-ink:#0b1a2a;--signal-soft:#1d3247;--warn:#f5cf8a;--warn-soft:#3a2c14;--bad:#ff8a80;--ok:#7fd6a4;--ok-soft:#173326;color-scheme:dark}}
+body{margin:0;background:var(--bg)}
+button{font-family:inherit;cursor:pointer}
+button:focus-visible,a:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+</style>
+</helmet>
+<div style="width:1440px;height:880px;display:flex;background:var(--bg);color:var(--fg);font:400 15px/1.5 var(--f-body);overflow:hidden">
+
+  <!-- SIDEBAR -->
+  <div style="flex:0 0 224px;box-sizing:border-box;padding:22px 14px;background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;gap:4px">
+    <div style="display:flex;align-items:center;gap:10px;padding:2px 10px 18px">
+      <div style="width:34px;height:34px;border-radius:10px;background:#eef0f5;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <img src="/_blob/4346b67ea2a7d0e06a923bcc808220c2" alt="Логотип Bogestv0" style="width:26px;height:26px;object-fit:contain">
+      </div>
+      <div>
+        <div style="font:600 15px/1.2 var(--f-display)">Bogestv0</div>
+        <div style="font:400 11.5px var(--f-mono);color:var(--muted);margin-top:2px">MIXER</div>
+      </div>
+    </div>
+
+    <a href="Main.dc.html" style="display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;min-height:44px;padding:0 12px;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-decoration:none">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M6 4v16M12 4v16M18 4v16"/><circle cx="6" cy="14" r="2" fill="currentColor"/><circle cx="12" cy="8" r="2" fill="currentColor"/><circle cx="18" cy="15" r="2" fill="currentColor"/></svg>
+      Микшер
+    </a>
+    <a href="Outputs.dc.html" style="display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;min-height:44px;padding:0 12px;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-decoration:none">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>
+      Выходы
+    </a>
+    <button style="display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-align:left">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="7" height="7" rx="2"/><rect x="14" y="4" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>
+      Сцены
+    </button>
+    <button style="display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-align:left">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h3l2-6 4 12 3-9 2 3h4"/></svg>
+      Эффекты
+    </button>
+    <button style="display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-align:left">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
+      Запись
+    </button>
+    <button aria-current="page" style="display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:12px;background:var(--signal-soft);color:var(--signal);font:600 15px var(--f-body);text-align:left">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="3"/><circle cx="12" cy="14" r="3.5"/><circle cx="12" cy="7" r="1"/></svg>
+      Устройства
+    </button>
+    <a href="Settings.dc.html" style="display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;min-height:44px;padding:0 12px;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-decoration:none">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>
+      Настройки
+    </a>
+
+    <div style="flex:1"></div>
+
+    <div style="display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:14px;background:var(--surface-2)">
+      <span style="align-self:flex-start;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 10px;border-radius:99px;background:var(--ok-soft);color:var(--ok)">
+        <span style="width:7px;height:7px;border-radius:50%;background:var(--ok)"></span>Движок работает
+      </span>
+      <span style="font:400 12px/1.5 var(--f-mono);color:var(--muted)">48 кГц · 256 смп<br>задержка 5.3 мс</span>
+    </div>
+  </div>
+
+  <!-- CONTENT -->
+  <div style="flex:1;min-width:0;box-sizing:border-box;padding:22px 24px 24px;display:flex;flex-direction:column;gap:14px">
+
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <div>
+        <h1 style="margin:0;font:600 22px/1.2 var(--f-display)">Устройства</h1>
+        <div style="font:400 11.5px var(--f-mono);color:var(--muted);margin-top:4px">найдено {{foundCount}} · подключено {{usedCount}}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;padding:5px 14px 5px 5px;border-radius:99px;background:var(--surface);border:1px solid var(--line);font-weight:600;font-size:14px">
+        <span style="width:30px;height:30px;border-radius:50%;background:var(--signal-soft);color:var(--signal);display:flex;align-items:center;justify-content:center;font-size:13px">B</span>
+        <span>Bogestv0</span>
+      </div>
+    </div>
+
+    <!-- hero -->
+    <div style="background:var(--signal-soft);border-radius:20px;padding:18px 22px;display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between">
+      <div style="min-width:0">
+        <div style="font:600 20px/1.2 var(--f-display);margin-bottom:4px">Подключи устройство к микшеру</div>
+        <div style="font-size:13px;color:var(--muted)">Нажми на слот у нужного устройства. Громкость настраивается на странице «Микшер».</div>
+      </div>
+      <button style="min-height:44px;padding:9px 18px;border-radius:12px;border:1px solid var(--signal);background:var(--signal);color:var(--signal-ink);font:500 14px var(--f-body)">Обновить список</button>
+    </div>
+
+    <div style="flex:1;min-height:0;display:flex;gap:14px">
+
+      <!-- DETECTED DEVICES -->
+      <div style="flex:1.7;min-width:0;background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px">
+        <h2 style="margin:0;font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Найденные устройства</h2>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <sc-for list="{{devices}}" as="d" hint-placeholder-count="6">
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:14px;background:{{d.rowBg}};border:1px solid {{d.rowBorder}}">
+              <div style="flex:0 0 40px;height:40px;border-radius:12px;background:var(--surface);display:flex;align-items:center;justify-content:center;color:var(--muted)">
+                <sc-if value="{{d.isMic}}" hint-placeholder-val="{{ false }}">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+                </sc-if>
+                <sc-if value="{{d.isSpk}}" hint-placeholder-val="{{ false }}">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>
+                </sc-if>
+                <sc-if value="{{d.isHp}}" hint-placeholder-val="{{ false }}">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="5" height="7" rx="1.5"/><rect x="16" y="14" width="5" height="7" rx="1.5"/></svg>
+                </sc-if>
+              </div>
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+                <span style="font-weight:600;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{d.name}}</span>
+                <span style="font:400 12px var(--f-mono);color:var(--muted)">{{d.sub}}</span>
+              </div>
+              <span style="font-size:12.5px;padding:3px 10px;border-radius:99px;white-space:nowrap;{{d.pillStyle}}">{{d.status}}</span>
+              <div style="display:flex;gap:5px">
+                <sc-for list="{{d.chips}}" as="c" hint-placeholder-count="3">
+                  <button onClick="{{c.pick}}" aria-pressed="{{c.on}}" aria-label="{{c.aria}}" style="min-width:52px;height:36px;border-radius:10px;padding:0 10px;font:600 13px var(--f-mono);{{c.style}}">{{c.label}}</button>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="font-size:13px;color:var(--muted)">Одно устройство занимает один слот. Нажми на подсвеченный слот ещё раз, чтобы отключить.</div>
+      </div>
+
+      <!-- SLOTS + VIRTUAL -->
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:14px">
+
+        <div style="background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px">
+          <h2 style="margin:0;font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Слоты микшера</h2>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <sc-for list="{{slots}}" as="s" hint-placeholder-count="4">
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:14px;background:var(--surface-2);border:1px solid {{s.border}}">
+                <span style="flex:0 0 46px;text-align:center;font:600 12.5px var(--f-mono);padding:4px 0;border-radius:99px;{{s.tagStyle}}">{{s.tag}}</span>
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+                  <span style="font-size:12px;color:var(--muted)">{{s.role}}</span>
+                  <span style="font-weight:600;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:{{s.nameColor}}">{{s.device}}</span>
+                </div>
+                <sc-if value="{{s.connected}}" hint-placeholder-val="{{ false }}">
+                  <button onClick="{{s.disconnect}}" aria-label="Отключить {{s.tag}}" style="min-height:36px;padding:0 14px;border-radius:10px;background:none;color:var(--fg);border:1px solid var(--line);font:500 13px var(--f-body)">Отключить</button>
+                </sc-if>
+                <sc-if value="{{s.empty}}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:12.5px;padding:3px 10px;border-radius:99px;background:var(--bg);color:var(--muted)">Пусто</span>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="flex:1;min-height:0;background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <h2 style="margin:0;font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Виртуальные устройства Bogestv0</h2>
+            <span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 10px;border-radius:99px;background:var(--ok-soft);color:var(--ok)">Драйвер установлен</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
+            <sc-for list="{{virtuals}}" as="v" hint-placeholder-count="6">
+              <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;background:var(--surface-2)">
+                <span style="flex:0 0 34px;text-align:center;font:600 12px var(--f-mono);padding:3px 0;border-radius:99px;{{v.tagStyle}}">{{v.tag}}</span>
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+                  <span style="font-weight:600;font-size:13.5px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{v.name}}</span>
+                  <span style="font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{v.hint}}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="font-size:13px;color:var(--muted)">V1–V4 в Windows выбираются как устройство вывода для программ. B1 и B2 появляются в OBS и Discord как микрофоны.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":880}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { slots: { hw1: 'mic1', a1: 'spk', a2: 'hp', a3: null } };
+  }
+
+  renderVals() {
+    const st = this.state;
+    const devs = [
+      { id: 'mic1', kind: 'in',  icon: 'mic', name: 'Микрофон (High Definition Audio)', sub: 'вход · 48 кГц · 1 канал' },
+      { id: 'mic2', kind: 'in',  icon: 'mic', name: 'USB Microphone',                   sub: 'вход · 48 кГц · 1 канал' },
+      { id: 'spk',  kind: 'out', icon: 'spk', name: 'Динамики (Realtek)',               sub: 'выход · 48 кГц · 2 канала' },
+      { id: 'hp',   kind: 'out', icon: 'hp',  name: 'USB PnP Audio Device',             sub: 'выход · 48 кГц · 2 канала' },
+      { id: 'hdmi', kind: 'out', icon: 'spk', name: 'Монитор (HDMI)',                   sub: 'выход · 48 кГц · 2 канала' },
+      { id: 'bt',   kind: 'out', icon: 'hp',  name: 'Bluetooth-наушники',               sub: 'выход · 44.1 кГц · 2 канала' }
+    ];
+    const slotDefs = [
+      { key: 'hw1', tag: 'HW1', role: 'Железный вход · микрофон', tone: 'warn' },
+      { key: 'a1',  tag: 'A1',  role: 'Колонки',  tone: 'signal' },
+      { key: 'a2',  tag: 'A2',  role: 'Наушники', tone: 'signal' },
+      { key: 'a3',  tag: 'A3',  role: 'Запасной', tone: 'signal' }
+    ];
+    const label = { hw1: 'HW1', a1: 'A1', a2: 'A2', a3: 'A3' };
+    const slotOf = (id) => Object.keys(st.slots).find((k) => st.slots[k] === id) || null;
+
+    const assign = (key, id) => () => {
+      const next = { ...st.slots };
+      Object.keys(next).forEach((k) => { if (next[k] === id) next[k] = null; });
+      next[key] = st.slots[key] === id ? null : id;
+      this.setState({ slots: next });
+    };
+
+    const devices = devs.map((d) => {
+      const cur = slotOf(d.id);
+      const keys = d.kind === 'in' ? ['hw1'] : ['a1', 'a2', 'a3'];
+      return {
+        name: d.name, sub: d.sub,
+        isMic: d.icon === 'mic', isSpk: d.icon === 'spk', isHp: d.icon === 'hp',
+        rowBg: cur ? 'var(--signal-soft)' : 'var(--surface-2)',
+        rowBorder: cur ? 'var(--signal)' : 'transparent',
+        status: cur ? 'Подключено · ' + label[cur] : 'Свободно',
+        pillStyle: cur ? 'background:var(--ok-soft);color:var(--ok)' : 'background:var(--bg);color:var(--muted)',
+        chips: keys.map((k) => ({
+          label: label[k],
+          on: st.slots[k] === d.id,
+          aria: (st.slots[k] === d.id ? 'Отключить ' : 'Подключить ') + d.name + ' к ' + label[k],
+          style: st.slots[k] === d.id
+            ? 'background:var(--signal);color:var(--signal-ink);border:1px solid var(--signal)'
+            : 'background:var(--surface);color:var(--fg);border:1px solid var(--line)',
+          pick: assign(k, d.id)
+        }))
+      };
+    });
+
+    const slots = slotDefs.map((s) => {
+      const id = st.slots[s.key];
+      const dev = devs.find((d) => d.id === id);
+      return {
+        tag: s.tag, role: s.role,
+        device: dev ? dev.name : 'Ничего не подключено',
+        nameColor: dev ? 'var(--fg)' : 'var(--muted)',
+        connected: !!dev, empty: !dev,
+        border: dev ? 'var(--signal)' : 'transparent',
+        tagStyle: 'background:var(--' + s.tone + '-soft);color:var(--' + s.tone + ')',
+        disconnect: () => this.setState({ slots: { ...st.slots, [s.key]: null } })
+      };
+    });
+
+    const vSig = 'background:var(--signal-soft);color:var(--signal)';
+    const vWarn = 'background:var(--warn-soft);color:var(--warn)';
+    const virtuals = [
+      { tag: 'V1', name: 'Bogestv0 Input 1', hint: 'для игр',            tagStyle: vSig },
+      { tag: 'V2', name: 'Bogestv0 Input 2', hint: 'для музыки',         tagStyle: vSig },
+      { tag: 'V3', name: 'Bogestv0 Input 3', hint: 'для Discord',        tagStyle: vSig },
+      { tag: 'V4', name: 'Bogestv0 Input 4', hint: 'для браузера',       tagStyle: vSig },
+      { tag: 'B1', name: 'Bogestv0 Output 1', hint: 'микрофон для OBS',  tagStyle: vWarn },
+      { tag: 'B2', name: 'Bogestv0 Output 2', hint: 'микрофон для звонков', tagStyle: vWarn }
+    ];
+
+    const used = Object.keys(st.slots).filter((k) => st.slots[k]).length;
+    return { devices, slots, virtuals, foundCount: devs.length, usedCount: used };
+  }
+}
+</script>
+</body>
+</html>

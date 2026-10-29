@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Микрофон — настройки</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+:root{--bg:#f1f2f6;--surface:#fff;--surface-2:#eef0f5;--line:#e3e5ea;--fg:#0b0b0c;--muted:#667080;--signal:#1f77bd;--signal-ink:#fff;--signal-soft:#e6f1fb;--ok:#1a7f4b;--ok-soft:#e3f5ea;--bad:#b3261e}
+@media (prefers-color-scheme:dark){:root{--bg:#181818;--surface:#212121;--surface-2:#2a2a2a;--line:#2f2f2f;--fg:#f5f5f5;--muted:#a3a9b3;--signal:#6ab3f3;--signal-ink:#0b1a2a;--signal-soft:#1d3247;--ok:#7fd6a4;--ok-soft:#173326;--bad:#ff8a80;color-scheme:dark}}
+body{margin:0;background:var(--bg)}
+button{font-family:inherit;cursor:pointer}
+a{text-decoration:none}
+html,body{height:100%;overflow:hidden}
+</style>
+<script src="dc.js"></script>
+</head>
+<body>
+<template id="tpl">
+<div style="width:100vw;height:100vh;box-sizing:border-box;padding:28px 40px;background:var(--bg);color:var(--fg);font:400 15px/1.5 'Onest',system-ui,sans-serif;display:flex;flex-direction:column;gap:18px;overflow:hidden">
+
+  <div style="display:flex;align-items:center;justify-content:space-between">
+    <div style="display:flex;align-items:center;gap:16px">
+      <a href="main.html" style="display:flex;align-items:center;gap:6px;min-height:44px;padding:0 14px;border-radius:12px;background:var(--surface);border:1px solid var(--line);color:var(--fg);font-weight:500">← Микшер</a>
+      <div>
+        <h1 style="margin:0;font:600 22px/1.2 'Unbounded',sans-serif">{{mic}}</h1>
+        <div style="font:400 11.5px 'JetBrains Mono',monospace;color:var(--muted);margin-top:4px">{{device}} · вход HW1 · 48 кГц</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <sc-for list="{{tabs}}" as="t"><span style="display:inline-flex;align-items:center;min-height:44px;padding:0 18px;border-radius:12px;font:500 14px 'Onest',sans-serif;{{t.style}}">{{t.name}}</span></sc-for>
+    </div>
+  </div>
+
+  <div style="flex:1;min-height:0;display:flex;gap:18px">
+    <div style="flex:0 0 640px;display:flex;flex-direction:column;gap:18px">
+      <div style="background:var(--surface);border-radius:20px;padding:22px;box-shadow:0 1px 0 var(--line);display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <h2 style="margin:0;font:600 12px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Шумоподавление</h2>
+          <span style="font:500 12px 'JetBrains Mono',monospace;padding:3px 10px;border-radius:99px;background:var(--ok-soft);color:var(--ok)">Включено · нейросеть</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <sc-for list="{{modes}}" as="m">
+            <button aria-pressed="{{m.on}}" style="text-align:left;min-height:84px;padding:12px 14px;border-radius:14px;display:flex;flex-direction:column;gap:3px;{{m.style}}">
+              <span style="font:600 15px 'Onest',sans-serif">{{m.name}}</span>
+              <span style="font:400 12.5px/1.4 'Onest',sans-serif;opacity:.8">{{m.desc}}</span>
+            </button>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="flex:1;background:var(--surface);border-radius:20px;padding:22px;box-shadow:0 1px 0 var(--line);display:flex;flex-direction:column;gap:14px">
+        <h2 style="margin:0;font:600 12px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Проверка: уровень фонового шума в паузах</h2>
+        <sc-for list="{{meters}}" as="r">
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;justify-content:space-between;font-size:13.5px"><span>{{r.name}}</span><span style="font:500 13px 'JetBrains Mono',monospace;color:{{r.color}}">{{r.db}}</span></div>
+            <div style="height:12px;border-radius:6px;background:var(--surface-2);overflow:hidden"><div style="width:{{r.pct}}%;height:100%;border-radius:6px;background:{{r.color}}"></div></div>
+          </div>
+        </sc-for>
+        <div style="font-size:13px;color:var(--muted)">Подавление опускает шум на 24 дБ, голос при этом не меняется.</div>
+      </div>
+    </div>
+
+    <div style="flex:1;background:var(--surface);border-radius:20px;padding:22px;box-shadow:0 1px 0 var(--line);display:flex;flex-direction:column;gap:16px">
+      <h2 style="margin:0;font:600 12px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Обработка голоса</h2>
+      <sc-for list="{{sliders}}" as="p">
+        <div style="display:flex;flex-direction:column;gap:7px;padding-bottom:14px;border-bottom:1px solid var(--line)">
+          <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-weight:600">{{p.name}}</span><span style="font:500 14px 'JetBrains Mono',monospace;color:var(--signal)">{{p.val}}</span></div>
+          <div style="position:relative;height:6px;border-radius:3px;background:var(--line);margin:6px 0"><div style="width:{{p.pct}}%;height:100%;border-radius:3px;background:var(--signal)"></div><div style="position:absolute;left:calc({{p.pct}}% - 11px);top:-8px;width:22px;height:22px;border-radius:50%;background:var(--surface);border:2px solid var(--signal);box-sizing:border-box"></div></div>
+          <span style="font-size:12.5px;color:var(--muted)">{{p.desc}}</span>
+          <sc-if value="{{p.hasQ}}"><div style="display:flex;gap:6px"><button style="flex:1;min-height:36px;border-radius:10px;font:500 13px 'JetBrains Mono',monospace;{{p.q0}}">+0</button><button style="flex:1;min-height:36px;border-radius:10px;font:500 13px 'JetBrains Mono',monospace;{{p.q1}}">+10</button><button style="flex:1;min-height:36px;border-radius:10px;font:500 13px 'JetBrains Mono',monospace;{{p.q2}}">+20</button><button style="flex:1;min-height:36px;border-radius:10px;font:500 13px 'JetBrains Mono',monospace;{{p.q3}}">+30</button></div></sc-if>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</template>
+<div id="app"></div>
+<script>
+class Component extends DCLogic {
+  renderVals() {
+    const on = 'background:var(--signal-soft);color:var(--signal);border:1px solid var(--signal);box-shadow:0 0 0 1px var(--signal)';
+    const off = 'background:var(--surface-2);color:var(--fg);border:1px solid transparent';
+    const modes = [
+      ['Выкл', 'Звук как есть, без обработки.', 0], ['Мягкое', 'Гул вентилятора, шум комнаты.', 0],
+      ['Сильное', 'Ещё клавиатура, мышь и эхо.', 1], ['Максимум', 'Остаётся только голос.', 0]
+    ].map((m) => ({ name: m[0], desc: m[1], on: !!m[2], style: m[2] ? on : off }));
+    const tabs = [['Микрофон 1', 1], ['Микрофон 2', 0]].map((t) => ({ name: t[0], style: t[1] ? 'background:var(--signal);color:var(--signal-ink)' : 'background:var(--surface);color:var(--muted);border:1px solid var(--line)' }));
+    const meters = [
+      { name: 'Без обработки', db: '−38 дБ', pct: 62, color: 'var(--bad)' },
+      { name: 'С подавлением', db: '−62 дБ', pct: 30, color: 'var(--ok)' }
+    ];
+    const sliders = [
+      { name: 'Сила подавления', val: '70 %', pct: 70, desc: 'Выше сила, чище фон, но голос может звучать суше.' },
+      { name: 'Порог гейта', val: '−45 дБ', pct: 38, desc: 'Тише порога микрофон закрывается, например между фразами.' },
+      { name: 'Фильтр низких частот', val: '80 Гц', pct: 22, desc: 'Убирает гул стола и стуки по корпусу.' },
+      { name: 'Компрессор', val: '3 : 1', pct: 45, desc: 'Выравнивает громкость: тихие слова слышнее, крики мягче.' },
+      { name: 'Усиление', val: '+10 дБ', pct: 33, hasQ: true, q0: off, q1: on, q2: off, q3: off, desc: 'Программное, работает с любым микрофоном: от 0 до +30 дБ, защита от перегруза.' }
+    ];
+    return { mic: 'Микрофон 1', device: 'USB-гарнитура', modes, tabs, meters, sliders };
+  }
+}
+</script>
+<script>DC.mount(Component);</script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "bogestv0-mixer",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Bogestv0 MIXER — виртуальный аудиомикшер для Windows",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

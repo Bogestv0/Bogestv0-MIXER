@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Bogestv0 MIXER — Запись</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600&amp;family=Unbounded:wght@500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+:root{--bg:#f1f2f6;--surface:#fff;--surface-2:#eef0f5;--line:#e3e5ea;--fg:#0b0b0c;--muted:#667080;--signal:#1f77bd;--signal-ink:#fff;--signal-soft:#e6f1fb;--warn:#8a5a00;--warn-soft:#fdf1d8;--bad:#b3261e;--ok:#1a7f4b;--ok-soft:#e3f5ea}
+@media (prefers-color-scheme:dark){:root{--bg:#181818;--surface:#212121;--surface-2:#2a2a2a;--line:#2f2f2f;--fg:#f5f5f5;--muted:#a3a9b3;--signal:#6ab3f3;--signal-ink:#0b1a2a;--signal-soft:#1d3247;--warn:#f5cf8a;--warn-soft:#3a2c14;--bad:#ff8a80;--ok:#7fd6a4;--ok-soft:#173326;color-scheme:dark}}
+body{margin:0;background:var(--bg)}
+button{font-family:inherit;cursor:pointer}
+a{text-decoration:none}
+</style>
+</helmet>
+<div style="width:1440px;height:880px;display:flex;background:var(--bg);color:var(--fg);font:400 15px/1.5 'Onest',system-ui,sans-serif;overflow:hidden">
+  <div style="flex:0 0 224px;box-sizing:border-box;padding:22px 14px;background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;gap:4px">
+    <div style="display:flex;align-items:center;gap:10px;padding:2px 10px 18px">
+      <div style="width:34px;height:34px;border-radius:10px;background:#eef0f5;border:1px solid var(--line);display:flex;align-items:center;justify-content:center"><img src="/_blob/021f9ea65b2a8d125997b2aadc86e099" alt="Логотип Bogestv0" style="width:26px;height:26px;object-fit:contain"></div>
+      <div><div style="font:600 15px/1.2 'Unbounded',sans-serif">Bogestv0</div><div style="font:400 11.5px 'JetBrains Mono',monospace;color:var(--muted);margin-top:2px">MIXER</div></div>
+    </div>
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="7">
+      <a href="{{n.href}}" style="display:flex;align-items:center;gap:12px;min-height:44px;padding:0 12px;border-radius:12px;font:500 15px 'Onest',sans-serif;{{n.style}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{n.d}}"/></svg>{{n.name}}</a>
+    </sc-for>
+    <div style="flex:1"></div>
+    <div style="display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:14px;background:var(--surface-2)">
+      <span style="align-self:flex-start;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 10px;border-radius:99px;background:var(--ok-soft);color:var(--ok)"><span style="width:7px;height:7px;border-radius:50%;background:var(--ok)"></span>Движок работает</span>
+      <span style="font:400 12px/1.5 'JetBrains Mono',monospace;color:var(--muted)">48 кГц · 256 смп<br>задержка 5.3 мс</span>
+    </div>
+  </div>
+  <div style="flex:1;min-width:0;box-sizing:border-box;padding:22px 24px 24px;display:flex;flex-direction:column;gap:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div><h1 style="margin:0;font:600 22px/1.2 'Unbounded',sans-serif">Запись</h1><div style="font:400 11.5px 'JetBrains Mono',monospace;color:var(--muted);margin-top:4px">пишем звук с выбранных выходов</div></div>
+      <div style="display:flex;align-items:center;gap:10px;padding:5px 14px 5px 5px;border-radius:99px;background:var(--surface);border:1px solid var(--line);font-weight:600;font-size:14px"><span style="width:30px;height:30px;border-radius:50%;background:var(--signal-soft);color:var(--signal);display:flex;align-items:center;justify-content:center;font-size:13px">B</span>Bogestv0</div>
+    </div>
+    <div style="flex:1;min-height:0;display:flex;gap:14px">
+      <div style="flex:1;min-width:0;background:var(--surface);border-radius:20px;padding:20px;box-shadow:0 1px 0 var(--line);display:flex;flex-direction:column;gap:16px">
+        <h2 style="margin:0;font:600 12px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Что записывать</h2>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px">
+          <sc-for list="{{src}}" as="s" hint-placeholder-count="5"><button aria-pressed="{{s.on}}" style="min-height:64px;padding:8px;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;{{s.style}}"><span style="font:500 13px 'JetBrains Mono',monospace;font-size:15px">{{s.tag}}</span><span style="font-size:12px;opacity:.85">{{s.role}}</span></button></sc-for>
+        </div>
+        <div style="display:flex;gap:18px;flex-wrap:wrap">
+          <div style="display:flex;flex-direction:column;gap:6px"><h2 style="margin:0;font:600 12px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Файлы</h2><div style="display:flex;gap:6px"><span style="min-height:44px;padding:0 18px;border-radius:12px;font:500 14px 'Onest',sans-serif;display:inline-flex;align-items:center;{{m1}}">Раздельно</span><span style="min-height:44px;padding:0 18px;border-radius:12px;font:500 14px 'Onest',sans-serif;display:inline-flex;align-items:center;{{m2}}">Один общий</span></div></div>
+          <div style="display:flex;flex-direction:column;gap:6px"><h2 style="margin:0;font:600 12px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Формат</h2><div style="display:flex;gap:6px"><span style="min-height:44px;padding:0 18px;border-radius:12px;font:500 14px 'Onest',sans-serif;display:inline-flex;align-items:center;{{f1}}">WAV</span><span style="min-height:44px;padding:0 18px;border-radius:12px;font:500 14px 'Onest',sans-serif;display:inline-flex;align-items:center;{{f2}}">MP3</span></div></div>
+          <div style="display:flex;flex-direction:column;gap:6px;flex:1;min-width:200px"><h2 style="margin:0;font:600 12px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Папка</h2><div style="font:500 13px 'JetBrains Mono',monospace;min-height:44px;display:flex;align-items:center;padding:0 14px;border-radius:12px;background:var(--surface-2);color:var(--muted)">D:\Записи\Bogestv0</div></div>
+        </div>
+        <div style="flex:1;border-radius:18px;background:var(--surface-2);padding:20px;display:flex;flex-direction:column;gap:14px;justify-content:center">
+          <div style="display:flex;align-items:center;gap:20px">
+            <button aria-label="Остановить запись" style="width:72px;height:72px;border-radius:50%;background:var(--bad);border:0;display:flex;align-items:center;justify-content:center"><span style="width:24px;height:24px;border-radius:5px;background:var(--signal-ink)"></span></button>
+            <div><div style="font:500 36px/1.1 'JetBrains Mono',monospace">00:12:48</div><div style="font-size:13px;color:var(--bad);margin-top:2px">Идёт запись · 2 источника</div></div>
+          </div>
+          <sc-for list="{{meters}}" as="m" hint-placeholder-count="2"><div style="display:flex;align-items:center;gap:12px"><span style="font:500 13px 'JetBrains Mono',monospace;width:90px">{{m.name}}</span><div style="flex:1;height:10px;border-radius:5px;background:var(--line);overflow:hidden"><div style="width:{{m.pct}}%;height:100%;border-radius:5px;background:linear-gradient(to right,var(--ok),var(--ok) 70%,var(--warn))"></div></div></div></sc-for>
+        </div>
+      </div>
+      <div style="flex:0 0 400px;background:var(--surface);border-radius:20px;padding:20px;box-shadow:0 1px 0 var(--line);display:flex;flex-direction:column;gap:10px">
+        <h2 style="margin:0;font:600 12px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Записи</h2>
+        <sc-for list="{{files}}" as="f" hint-placeholder-count="5"><div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;background:var(--surface-2)"><span style="width:36px;height:36px;border-radius:50%;background:var(--signal-soft);color:var(--signal);display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg></span><div style="min-width:0;flex:1"><div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{f.name}}</div><div style="font:500 13px 'JetBrains Mono',monospace;font-size:12px;color:var(--muted)">{{f.info}}</div></div></div></sc-for>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":880}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const on = 'background:var(--signal);color:var(--signal-ink);border:1px solid var(--signal)';
+    const off = 'background:var(--surface);color:var(--fg);border:1px solid var(--line)';
+    const dot = (v) => v ? 'background:var(--signal)' : 'background:var(--surface-2);border:1px solid var(--line)';
+    const navDefs = [['Микшер','M6 4v16M12 4v16M18 4v16','Main.dc.html'],['Выходы','M4 9v6h4l5 4V5L8 9H4zM16.5 8.5a5 5 0 0 1 0 7','#'],['Сцены','M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z','Scenes.dc.html'],['Эффекты','M3 12h3l2-6 4 12 3-9 2 3h4','Effects.dc.html'],['Запись','M12 4a8 8 0 1 0 0 16a8 8 0 1 0 0-16z','Record.dc.html'],['Устройства','M7 3h10a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3zM12 11a3 3 0 1 0 0 6a3 3 0 1 0 0-6z','#'],['Настройки','M12 2v3M12 19v3M2 12h3M19 12h3M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6z','Strips.dc.html']];
+    const nav = navDefs.map((n) => ({ name: n[0], d: n[1], href: n[2], style: n[0] === 'Запись' ? 'background:var(--signal-soft);color:var(--signal);font-weight:600' : 'background:none;color:var(--muted)' }));
+    const S = [['A1','Колонки',0],['A2','Наушники',1],['A3','Запасной',0],['B1','Для стрима',1],['B2','Для звонков',0]];
+    const src = S.map((s) => ({ tag: s[0], role: s[1], on: !!s[2], style: s[2] ? 'background:var(--signal-soft);color:var(--signal);border:1px solid var(--signal);box-shadow:0 0 0 1px var(--signal)' : 'background:none;color:var(--muted);border:1px solid var(--line)' }));
+    const meters = [{ name: 'A2 Наушники', pct: 68 }, { name: 'B1 Для стрима', pct: 74 }];
+    const files = [['2026-10-30 стрим · A2.wav','18:42 · 191 МБ'],['2026-10-30 стрим · B1.wav','18:42 · 191 МБ'],['2026-10-29 звонок · B2.mp3','1:05:10 · 62 МБ'],['2026-10-27 музыка · A1.wav','04:20 · 44 МБ']].map((f) => ({ name: f[0], info: f[1] }));
+    return { nav, src, meters, files, m1: on, m2: off, f1: on, f2: off };
+  }
+}
+</script>
+</body>
+</html>

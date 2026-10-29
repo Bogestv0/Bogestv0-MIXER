@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bogestv0 MIXER — Сцены</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+:root{--bg:#f1f2f6;--surface:#fff;--surface-2:#eef0f5;--line:#e3e5ea;--fg:#0b0b0c;--muted:#667080;--signal:#1f77bd;--signal-ink:#fff;--signal-soft:#e6f1fb;--warn:#8a5a00;--warn-soft:#fdf1d8;--bad:#b3261e;--ok:#1a7f4b;--ok-soft:#e3f5ea}
+@media (prefers-color-scheme:dark){:root{--bg:#181818;--surface:#212121;--surface-2:#2a2a2a;--line:#2f2f2f;--fg:#f5f5f5;--muted:#a3a9b3;--signal:#6ab3f3;--signal-ink:#0b1a2a;--signal-soft:#1d3247;--warn:#f5cf8a;--warn-soft:#3a2c14;--bad:#ff8a80;--ok:#7fd6a4;--ok-soft:#173326;color-scheme:dark}}
+body{margin:0;background:var(--bg)}
+button{font-family:inherit;cursor:pointer}
+a{text-decoration:none}
+html,body{height:100%;overflow:hidden}
+</style>
+<script src="dc.js"></script>
+</head>
+<body>
+<template id="tpl">
+<div style="width:100vw;height:100vh;display:flex;background:var(--bg);color:var(--fg);font:400 15px/1.5 'Onest',system-ui,sans-serif;overflow:hidden">
+  <div style="flex:0 0 224px;box-sizing:border-box;padding:22px 14px;background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;gap:4px">
+    <div style="display:flex;align-items:center;gap:10px;padding:2px 10px 18px">
+      <div style="width:34px;height:34px;border-radius:10px;background:#eef0f5;border:1px solid var(--line);display:flex;align-items:center;justify-content:center"><img src="logo.png" alt="Логотип Bogestv0" style="width:26px;height:26px;object-fit:contain"></div>
+      <div><div style="font:600 15px/1.2 'Unbounded',sans-serif">Bogestv0</div><div style="font:400 11.5px 'JetBrains Mono',monospace;color:var(--muted);margin-top:2px">MIXER</div></div>
+    </div>
+    <sc-for list="{{nav}}" as="n">
+      <a href="{{n.href}}" style="display:flex;align-items:center;gap:12px;min-height:44px;padding:0 12px;border-radius:12px;font:500 15px 'Onest',sans-serif;{{n.style}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{n.d}}"/></svg>{{n.name}}</a>
+    </sc-for>
+    <div style="flex:1"></div>
+    <div style="display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:14px;background:var(--surface-2)">
+      <span style="align-self:flex-start;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 10px;border-radius:99px;background:var(--ok-soft);color:var(--ok)"><span style="width:7px;height:7px;border-radius:50%;background:var(--ok)"></span>Движок работает</span>
+      <span style="font:400 12px/1.5 'JetBrains Mono',monospace;color:var(--muted)">48 кГц · 256 смп<br>задержка 5.3 мс</span>
+    </div>
+  </div>
+  <div style="flex:1;min-width:0;box-sizing:border-box;padding:22px 24px 24px;display:flex;flex-direction:column;gap:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div><h1 style="margin:0;font:600 22px/1.2 'Unbounded',sans-serif">Сцены</h1><div style="font:400 11.5px 'JetBrains Mono',monospace;color:var(--muted);margin-top:4px">режимы работы · микрофоны · маршруты · устройства</div></div>
+      <div style="display:flex;align-items:center;gap:10px;padding:5px 14px 5px 5px;border-radius:99px;background:var(--surface);border:1px solid var(--line);font-weight:600;font-size:14px"><span style="width:30px;height:30px;border-radius:50%;background:var(--signal-soft);color:var(--signal);display:flex;align-items:center;justify-content:center;font-size:13px">B</span>Bogestv0</div>
+    </div>
+    <div style="flex:1;min-height:0;display:flex;gap:14px">
+      <div style="flex:0 0 330px;display:flex;flex-direction:column;gap:10px">
+        <h2 style="margin:0;font:600 12px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Мои сцены</h2>
+        <sc-for list="{{scenes}}" as="sc">
+          <button aria-pressed="{{sc.on}}" style="text-align:left;padding:14px 16px;border-radius:16px;display:flex;flex-direction:column;gap:3px;{{sc.style}}"><span style="font:600 16px 'Onest',sans-serif">{{sc.name}}</span><span style="font:400 12.5px/1.4 'Onest',sans-serif;opacity:.8">{{sc.sub}}</span></button>
+        </sc-for>
+        <button style="min-height:44px;padding:0 18px;border-radius:12px;font:500 14px 'Onest',sans-serif;background:none;color:var(--signal);border:1px dashed var(--signal)">+ Новая сцена</button>
+      </div>
+      <div style="flex:1;min-width:0;background:var(--surface);border-radius:20px;padding:20px;box-shadow:0 1px 0 var(--line);display:flex;flex-direction:column;gap:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+          <div><div style="font:600 20px/1.2 'Unbounded',sans-serif">Играю и стримлю</div><div style="font-size:13px;color:var(--muted);margin-top:3px">Игры и музыка в наушники и на стрим, Discord только в наушники.</div></div>
+          <div style="display:flex;gap:8px"><button style="min-height:44px;padding:0 18px;border-radius:12px;font:500 14px 'Onest',sans-serif;background:var(--surface);color:var(--fg);border:1px solid var(--line)">Дублировать</button><button style="min-height:44px;padding:0 18px;border-radius:12px;font:500 14px 'Onest',sans-serif;background:var(--signal);color:var(--signal-ink);border:1px solid var(--signal)">Применить</button></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <h2 style="margin:0;font:600 12px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Микрофоны</h2>
+          <sc-for list="{{mics}}" as="m"><div style="display:flex;justify-content:space-between;padding:10px 14px;border-radius:12px;background:var(--surface-2)"><span style="font-weight:600">{{m.name}}</span><span style="font:500 13px 'JetBrains Mono',monospace;color:var(--muted)">{{m.text}}</span></div></sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <h2 style="margin:0;font:600 12px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Куда идёт звук</h2>
+          <div style="display:grid;grid-template-columns:160px repeat(5,1fr);gap:6px 0;align-items:center;font:500 13px 'JetBrains Mono',monospace;color:var(--muted);text-align:center"><span></span><span>A1</span><span>A2</span><span>A3</span><span>B1</span><span>B2</span></div>
+          <sc-for list="{{rows}}" as="r">
+            <div style="display:grid;grid-template-columns:160px repeat(5,1fr);align-items:center;justify-items:center;padding:5px 0;border-top:1px solid var(--line)"><span style="justify-self:start;font-weight:500">{{r.name}}</span><span style="width:20px;height:20px;border-radius:50%;{{r.c0}}"></span><span style="width:20px;height:20px;border-radius:50%;{{r.c1}}"></span><span style="width:20px;height:20px;border-radius:50%;{{r.c2}}"></span><span style="width:20px;height:20px;border-radius:50%;{{r.c3}}"></span><span style="width:20px;height:20px;border-radius:50%;{{r.c4}}"></span></div>
+          </sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <h2 style="margin:0;font:600 12px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Устройства</h2>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <sc-for list="{{devs}}" as="d"><div style="display:flex;gap:10px;align-items:center;padding:9px 12px;border-radius:12px;background:var(--surface-2)"><span style="font:500 13px 'JetBrains Mono',monospace;padding:2px 9px;border-radius:99px;background:var(--signal-soft);color:var(--signal)">{{d.tag}}</span><span style="font-size:13.5px">{{d.name}}</span></div></sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</template>
+<div id="app"></div>
+<script>
+class Component extends DCLogic {
+  renderVals() {
+    const on = 'background:var(--signal);color:var(--signal-ink);border:1px solid var(--signal)';
+    const off = 'background:var(--surface);color:var(--fg);border:1px solid var(--line)';
+    const dot = (v) => v ? 'background:var(--signal)' : 'background:var(--surface-2);border:1px solid var(--line)';
+    const navDefs = [['Микшер','M6 4v16M12 4v16M18 4v16','main.html'],['Выходы','M4 9v6h4l5 4V5L8 9H4zM16.5 8.5a5 5 0 0 1 0 7','#'],['Сцены','M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z','scenes.html'],['Эффекты','M3 12h3l2-6 4 12 3-9 2 3h4','effects.html'],['Запись','M12 4a8 8 0 1 0 0 16a8 8 0 1 0 0-16z','record.html'],['Устройства','M7 3h10a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3zM12 11a3 3 0 1 0 0 6a3 3 0 1 0 0-6z','#'],['Настройки','M12 2v3M12 19v3M2 12h3M19 12h3M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6z','strips.html']];
+    const nav = navDefs.map((n) => ({ name: n[0], d: n[1], href: n[2], style: n[0] === 'Сцены' ? 'background:var(--signal-soft);color:var(--signal);font-weight:600' : 'background:none;color:var(--muted)' }));
+    const scenes = [['Играю и стримлю','Игры и музыка на стрим и в наушники',1],['Звонок','Всё в наушники, микрофоны только на звонки',0],['Всё в колонки','Все дорожки в колонки',0]].map((s) => ({ name: s[0], sub: s[1], on: !!s[2], style: s[2] ? 'background:var(--signal-soft);color:var(--signal);border:1px solid var(--signal);box-shadow:0 0 0 1px var(--signal)' : 'background:var(--surface);color:var(--fg);border:1px solid var(--line)' }));
+    const mics = [{ name: 'Микрофон 1', text: 'шумодав: сильное · гейт 35 %' }, { name: 'Микрофон 2', text: 'шумодав: мягкое · гейт 40 %' }];
+    const M = [['Микрофон 1',[0,0,0,1,1]],['Микрофон 2',[0,0,0,1,1]],['Игры',[0,1,0,1,0]],['Музыка',[0,1,0,1,0]],['Discord',[0,1,0,0,0]],['Браузер',[0,1,0,0,0]]];
+    const rows = M.map((m) => ({ name: m[0], c0: dot(m[1][0]), c1: dot(m[1][1]), c2: dot(m[1][2]), c3: dot(m[1][3]), c4: dot(m[1][4]) }));
+    const devs = [['HW1','Микрофон (High Definition Audio)'],['HW2','USB Microphone'],['A1','Динамики (Realtek)'],['A2','USB PnP Audio Device']].map((d) => ({ tag: d[0], name: d[1] }));
+    return { nav, scenes, mics, rows, devs };
+  }
+}
+</script>
+<script>DC.mount(Component);</script>
+<script src="app.js"></script>
+</body>
+</html>

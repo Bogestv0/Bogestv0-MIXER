@@ -1,0 +1,54 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Bogestv0 MIXER",
+  "version": "0.0.1",
+  "identifier": "com.bogestv0.mixer",
+  "build": {
+    "frontendDist": "../app"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Bogestv0 MIXER",
+        "width": 1360,
+        "height": 840,
+        "minWidth": 1180,
+        "minHeight": 720,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["Russian", "English"]
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "ВСТАВЬТЕ_ПУБЛИЧНЫЙ_КЛЮЧ_ИЗ_ФАЙЛА_.pub",
+      "endpoints": [
+        "https://github.com/OWNER/Bogestv0-MIXER/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}
