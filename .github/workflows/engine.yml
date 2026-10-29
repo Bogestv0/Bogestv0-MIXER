@@ -1,0 +1,23 @@
+name: Engine
+
+# Собирает консольный движок для Windows. Готовый engine.exe лежит в Actions → запуск → Artifacts.
+on:
+  push:
+    paths: ['engine/**', '.github/workflows/engine.yml']
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Сборка
+        run: |
+          cmake -S engine -B build -A x64
+          cmake --build build --config Release
+      - name: Самопроверка обработки
+        run: build\Release\engine.exe --selftest
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bogestv0-engine-win64
+          path: build/Release/engine.exe
