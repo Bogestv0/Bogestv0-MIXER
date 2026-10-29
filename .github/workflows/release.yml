@@ -1,0 +1,56 @@
+name: Release
+
+# Запускается при создании тега вида v0.0.1 (или v0.1.0-beta.1 для тестовой сборки).
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      # Тег, package.json, Cargo.toml и tauri.conf.json должны иметь одну версию.
+      - name: Проверка версии
+        shell: bash
+        run: node tools/check-version.mjs "${GITHUB_REF_NAME#v}"
+
+      - name: Текст релиза из CHANGELOG.md
+        id: notes
+        shell: bash
+        run: |
+          {
+            echo 'body<<NOTES_EOF'
+            node tools/release-notes.mjs "${GITHUB_REF_NAME#v}"
+            echo 'NOTES_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Bogestv0 MIXER ${{ github.ref_name }}
+          releaseBody: ${{ steps.notes.outputs.body }}
+          releaseDraft: false
+          # Тестовые версии (с дефисом в теге) не попадают в «latest» и не доходят до стабильных пользователей.
+          prerelease: ${{ contains(github.ref_name, '-') }}
