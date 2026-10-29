@@ -42,7 +42,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "ВСТАВЬТЕ_ПУБЛИЧНЫЙ_КЛЮЧ_ИЗ_ФАЙЛА_.pub",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgyNTY4ODg3QzAzRTM0RjUKUldUMU5EN0FoNGhXZ2xiS014WTUrUnRjcHdJdk1PSWhoRmpWRXhBVkpDcnB6azdTU0JweUlINHcK",
       "endpoints": [
         "https://github.com/Bogestv0/Bogestv0-MIXER/releases/latest/download/latest.json"
       ],
