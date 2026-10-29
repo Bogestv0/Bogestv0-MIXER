@@ -26,7 +26,7 @@
 #include <windows.h>
 #endif
 
-static const char* VERSION = "0.0.3";
+static const char* VERSION = "0.0.4";
 
 struct Engine {
     std::atomic<float> gain_lin{1.0f};
@@ -61,6 +61,7 @@ static void usage() {
         "  --period N     размер блока: 128, 256, 512 (по умолчанию 128)\n"
         "  --rate Гц      44100 или 48000 (по умолчанию 48000)\n"
         "  --exclusive    эксклюзивный режим микрофона (меньше задержка)\n"
+        "  --exclusive-out эксклюзивный режим выхода (сильно меньше задержка, закройте Voicemeeter)\n"
         "  --selftest     проверка обработки без звуковых устройств\n\n"
         "Клавиши: + / - усиление, q выход.\n", VERSION);
 }
@@ -118,7 +119,7 @@ int main(int argc, char** argv) {
 #endif
     int in_idx = -1, out_idx = -1, period = 128, rate = 48000;
     float gain_db = 0.0f;
-    bool list = false, exclusive = false;
+    bool list = false, exclusive = false, exclusive_out = false;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto next = [&](const char* name) -> const char* {
@@ -132,6 +133,7 @@ int main(int argc, char** argv) {
         else if (a == "--period") period = std::atoi(next("--period"));
         else if (a == "--rate") rate = std::atoi(next("--rate"));
         else if (a == "--exclusive") exclusive = true;
+        else if (a == "--exclusive-out") exclusive_out = true;
         else if (a == "--selftest") return selftest();
         else { usage(); return a == "--help" || a == "-h" ? 0 : 2; }
     }
@@ -192,6 +194,7 @@ int main(int argc, char** argv) {
         cfg.playback.pDeviceID = &dl.play[out_idx].id;
         cfg.playback.format = ma_format_f32;
         cfg.playback.channels = 2;
+        cfg.playback.shareMode = exclusive_out ? ma_share_mode_exclusive : ma_share_mode_shared;
         return cfg;
     };
 
@@ -233,7 +236,7 @@ int main(int argc, char** argv) {
     std::printf("%u Гц, блок %u смп (устройство: %u x %u / %u x %u), %s\n", dev.sampleRate, (unsigned)period,
                 dev.capture.internalPeriodSizeInFrames, dev.capture.internalPeriods,
                 dev.playback.internalPeriodSizeInFrames, dev.playback.internalPeriods,
-                exclusive ? "эксклюзивный микрофон" : "общий режим");
+                exclusive ? (exclusive_out ? "эксклюзив: микрофон и выход" : "эксклюзивный микрофон") : (exclusive_out ? "эксклюзивный выход" : "общий режим"));
     std::printf("Оценка задержки (буферы входа и выхода): около %.1f мс. Реальную может добавить драйвер звуковой карты.\n", est_ms);
     std::printf("ВНИМАНИЕ: пользуйтесь наушниками, иначе микрофон будет свистеть от колонок.\n");
     std::printf("Клавиши: + / - усиление, q выход.\n\n");
