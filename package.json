@@ -4,6 +4,7 @@
   "private": true,
   "description": "Bogestv0 MIXER — виртуальный аудиомикшер для Windows",
   "scripts": {
+    "tauri": "tauri",
     "dev": "tauri dev",
     "build": "tauri build"
   },
