@@ -44,7 +44,7 @@
     "updater": {
       "pubkey": "ВСТАВЬТЕ_ПУБЛИЧНЫЙ_КЛЮЧ_ИЗ_ФАЙЛА_.pub",
       "endpoints": [
-        "https://github.com/OWNER/Bogestv0-MIXER/releases/latest/download/latest.json"
+        "https://github.com/Bogestv0/Bogestv0-MIXER/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"
