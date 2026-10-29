@@ -1,5 +1,10 @@
 // Bogestv0 MIXER — движок v0 (этап 2): микрофон -> программное усиление -> наушники.
 // Консольная программа без драйвера. Звук через WASAPI (miniaudio).
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#endif
 #define MINIAUDIO_IMPLEMENTATION
 #define MA_NO_ENCODING
 #define MA_NO_DECODING
