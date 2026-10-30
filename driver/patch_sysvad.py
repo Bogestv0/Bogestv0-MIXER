@@ -29,6 +29,23 @@ MINIPAIRS = "audio/sysvad/TabletAudioSample/minipairs.h"
 # Добавляемые устройства воспроизведения (6.2b): (номер, имя в Windows)
 EXTRA_INPUTS = (5, 6)
 
+# Имена конечных точек воспроизведения (6.2c): номер -> GUID имени
+INPUT_NAME_GUIDS = {
+    1: "ee448946-08cb-42d4-bc7f-3af2a4631318",
+    2: "ae92c08c-0659-41b8-a88b-4dcc71758bdd",
+    3: "03ec7245-2551-4c1e-8152-333787bcdb08",
+    4: "7181f591-1538-4bfc-92ed-1967c1947b64",
+    5: "0c661e94-8108-472b-8d2f-2858eb28a51f",
+    6: "12ec3d4d-feb2-4fa3-be5d-c64344755b26",
+}
+TOPTABLES = {  # номер -> (файл таблицы топологии, категория контакта-выхода)
+    1: ("audio/sysvad/EndpointsCommon/speakertoptable.h", "KSNODETYPE_SPEAKER"),
+    2: ("audio/sysvad/EndpointsCommon/speakerhptoptable.h", "KSNODETYPE_HEADPHONES"),
+    3: ("audio/sysvad/TabletAudioSample/hdmitoptable.h", "KSNODETYPE_HDMI_INTERFACE"),
+    4: ("audio/sysvad/TabletAudioSample/spdiftoptable.h", "KSNODETYPE_SPDIF_INTERFACE"),
+}
+SPDIF_TOPTABLE = "audio/sysvad/TabletAudioSample/spdiftoptable.h"
+
 # (строка в разделе [Strings] как в примере, наша строка)
 STRINGS = [
     ('ProviderName = "TODO-Set-Provider"', 'ProviderName = "Bogestv0"'),
@@ -117,7 +134,7 @@ ENDPOINT_MINIPAIR BogestvInput{n}Miniports =
     L"TopologyInput{n}",                                     // must match KSNAME_TopologyInput{n} in the inf [Strings] section
     NULL,                                                   // optional template name
     CreateMiniportTopologySYSVAD,
-    &SpdifTopoMiniportFilterDescriptor,
+    &BogestvIn{n}TopoMiniportFilterDescriptor,
     0, NULL,                                                // Interface properties
     L"WaveInput{n}",                                         // must match KSNAME_WaveInput{n} in the inf [Strings] section
     NULL,                                                   // optional template name
@@ -155,6 +172,16 @@ def patch_minipairs(root: pathlib.Path) -> int:
         text = text.replace(anchor, block + anchor)
     else:
         errors.append("minipairs.h: не найден раздел «Capture miniports»")
+
+    # 1b. Копии таблицы топологии SPDIF для Input 5 и 6 (6.2c).
+    inc_anchor = '#include "spdifwavtable.h"\n'
+    inc_new = "".join(f'#include "bogestvin{n}toptable.h"\n' for n in EXTRA_INPUTS)
+    if inc_new in text:
+        pass
+    elif text.count(inc_anchor) == 1:
+        text = text.replace(inc_anchor, inc_anchor + inc_new)
+    else:
+        errors.append("minipairs.h: не найден #include spdifwavtable.h")
 
     # 2. Список устройств воспроизведения: 4 -> 6.
     text = replace_once(
@@ -275,12 +302,122 @@ def patch_inx_devices(root: pathlib.Path) -> int:
     return 0
 
 
+
+def guid_define(n: int) -> str:
+    g = INPUT_NAME_GUIDS[n]
+    a = g.split("-")
+    tail = a[3] + a[4]
+    bytes_ = ", ".join("0x" + tail[i:i + 2] for i in range(0, 16, 2))
+    return (f"\n//\n// {{{g}}}  (Bogestv0 Input {n}: endpoint name)\n"
+            f"DEFINE_GUID(BOGESTV_INPUT{n}_NAME,\n0x{a[0]}, 0x{a[1]}, 0x{a[2]}, {bytes_});\n")
+
+
+def add_guid_after_guard(text: str, n: int, errors: list, what: str) -> str:
+    marker = f"BOGESTV_INPUT{n}_NAME"
+    if marker in text:
+        return text
+    m = re.search(r"#define _SYSVAD_\w+_H_\n", text)
+    if not m:
+        errors.append(f"{what}: не найден #define защиты от повторного включения")
+        return text
+    return text[:m.end()] + guid_define(n) + text[m.end():]
+
+
+def set_pin_name(text: str, category: str, n: int, errors: list, what: str) -> str:
+    """Контакт-выход с категорией <category>: Name NULL -> &BOGESTV_INPUT<n>_NAME."""
+    pat = re.compile(r"(&" + re.escape(category) + r",\s*// Category\n\s*)NULL(,?\s*// Name)")
+    if f"&BOGESTV_INPUT{n}_NAME" in text:
+        return text
+    if len(pat.findall(text)) != 1:
+        errors.append(f"{what}: контакт с категорией {category} найден {len(pat.findall(text))} раз (ожидалось 1)")
+        return text
+    return pat.sub(lambda m: m.group(1) + f"&BOGESTV_INPUT{n}_NAME," + m.group(2).lstrip(","), text)
+
+
+def patch_names(root: pathlib.Path) -> int:
+    """6.2c: имена Input 1..6 для устройств воспроизведения."""
+    errors: list = []
+
+    # Копии таблицы SPDIF для Input 5 и 6: делаем из нетронутой таблицы (до вставки имени).
+    sp_path = root / SPDIF_TOPTABLE
+    if not sp_path.exists():
+        print(f"ОШИБКА: нет файла {sp_path}", file=sys.stderr)
+        return 1
+    sp_text, sp_enc, sp_nl = read_text(sp_path)
+    for n in EXTRA_INPUTS:
+        dst = root / f"audio/sysvad/TabletAudioSample/bogestvin{n}toptable.h"
+        if dst.exists():
+            continue
+        if f"BOGESTV_INPUT4_NAME" in sp_text:
+            errors.append("таблица SPDIF уже изменена, а копии для Input 5/6 не созданы: начните с чистого примера")
+            continue
+
+        def ren(m):
+            tok = m.group(0)
+            if tok.startswith("PropertyHandler_"):
+                return tok  # обработчик свойств общий с SPDIF
+            return tok.replace("Spdif", f"BogestvIn{n}")
+        t = re.sub(r"\b\w*Spdif\w*\b", ren, sp_text)
+        t = t.replace("SPDIFTOPTABLE", f"BOGESTVIN{n}TOPTABLE")
+        t = add_guid_after_guard(t, n, errors, f"bogestvin{n}toptable.h")
+        t = set_pin_name(t, "KSNODETYPE_SPDIF_INTERFACE", n, errors, f"bogestvin{n}toptable.h")
+        write_text(dst, t, sp_enc, sp_nl)
+        print(f"ok: создан bogestvin{n}toptable.h")
+
+    # Имена в таблицах штатных устройств.
+    for n, (rel, cat) in TOPTABLES.items():
+        path = root / rel
+        if not path.exists():
+            errors.append(f"нет файла {rel}")
+            continue
+        t, enc, nl = read_text(path)
+        t = add_guid_after_guard(t, n, errors, rel)
+        t = set_pin_name(t, cat, n, errors, rel)
+        write_text(path, t, enc, nl)
+
+    # INF: регистрация имён.
+    path = root / INX
+    t, enc, nl = read_text(path)
+    reg_anchor = "HKR,%MEDIA_CATEGORIES%\\%MicInCustomNameGUID%,Name,,%MicInCustomName%\n"
+    if "%Input1CustomNameGUID%" not in t:
+        if t.count(reg_anchor) == 1:
+            add = "".join(f"HKR,%MEDIA_CATEGORIES%\\%Input{n}CustomNameGUID%,Name,,%Input{n}CustomName%\n" for n in range(1, 7))
+            t = t.replace(reg_anchor, reg_anchor + add)
+        else:
+            errors.append("INF: не найдена строка регистрации имени MicIn")
+    guid_anchor = re.search(r"^MicArray3CustomNameGUID\s*=.*\n", t, re.M)
+    if "Input1CustomNameGUID =" not in t:
+        if guid_anchor:
+            add = "".join(f"Input{n}CustomNameGUID = {{{INPUT_NAME_GUIDS[n]}}}\n" for n in range(1, 7))
+            t = t[:guid_anchor.end()] + add + t[guid_anchor.end():]
+        else:
+            errors.append("INF: не найдена строка MicArray3CustomNameGUID")
+    name_anchor = re.search(r'^MicInCustomName\s*=.*\n', t, re.M)
+    if 'Input1CustomName=' not in t:
+        if name_anchor:
+            add = "".join(f'Input{n}CustomName= "Bogestv0 Input {n}"\n' for n in range(1, 7))
+            t = t[:name_anchor.end()] + add + t[name_anchor.end():]
+        else:
+            errors.append("INF: не найдена строка MicInCustomName")
+    for tok in sorted(set(re.findall(r"%(Input\d(?:CustomName|CustomNameGUID))%", t))):
+        if not re.search(r"^" + tok + r"\s*=", t, re.M):
+            errors.append(f"INF: {tok} не определена в [Strings]")
+
+    if errors:
+        for e in errors:
+            print("ОШИБКА: " + e, file=sys.stderr)
+        return 1
+    write_text(path, t, enc, nl)
+    print("ok: имена Input 1–6 (таблицы топологии и INF)")
+    return 0
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print(__doc__)
         return 2
     root = pathlib.Path(sys.argv[1])
-    for step in (patch_inx, patch_inx_devices, patch_minipairs):
+    for step in (patch_inx, patch_inx_devices, patch_minipairs, patch_names):
         rc = step(root)
         if rc:
             return rc
