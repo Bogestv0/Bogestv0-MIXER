@@ -10,7 +10,7 @@
 @media (prefers-color-scheme:dark){:root{--bg:#181818;--surface:#212121;--surface-2:#2a2a2a;--line:#2f2f2f;--fg:#f5f5f5;--muted:#a3a9b3;--signal:#6ab3f3;--signal-ink:#0b1a2a;--signal-soft:#1d3247;--warn:#f5cf8a;--warn-soft:#3a2c14;--bad:#ff8a80;--ok:#7fd6a4;--ok-soft:#173326;--m-mid:#f5cf8a;color-scheme:dark}}
 body{margin:0;background:var(--bg)}
 button{font-family:inherit;cursor:pointer}
-button:focus-visible,a:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+button:focus-visible,a:focus-visible,[data-bfader]:focus-visible{outline:2px solid var(--signal);outline-offset:2px;border-radius:10px}
 html,body{height:100%;overflow:hidden}
 </style>
 <script src="dc.js"></script>
@@ -33,31 +33,31 @@ html,body{height:100%;overflow:hidden}
     </div>
 
     <a href="main.html" style="display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;min-height:44px;padding:0 12px;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-decoration:none">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M6 4v16M12 4v16M18 4v16"/><circle cx="6" cy="14" r="2" fill="currentColor"/><circle cx="12" cy="8" r="2" fill="currentColor"/><circle cx="18" cy="15" r="2" fill="currentColor"/></svg>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4v16M12 4v16M18 4v16"/><circle cx="6" cy="14" r="2" fill="currentColor"/><circle cx="12" cy="8" r="2" fill="currentColor"/><circle cx="18" cy="15" r="2" fill="currentColor"/></svg>
       Микшер
     </a>
-    <button aria-current="page" style="display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:12px;background:var(--signal-soft);color:var(--signal);font:600 15px var(--f-body);text-align:left">
+    <a href="outputs.html" aria-current="page" style="display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;min-height:44px;padding:0 12px;border-radius:12px;background:var(--signal-soft);color:var(--signal);font:600 15px var(--f-body);text-decoration:none">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>
       Выходы
-    </button>
-    <button style="display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-align:left">
+    </a>
+    <a href="scenes.html" style="display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;min-height:44px;padding:0 12px;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-decoration:none">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="7" height="7" rx="2"/><rect x="14" y="4" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>
       Сцены
-    </button>
-    <button style="display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-align:left">
+    </a>
+    <a href="effects.html" style="display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;min-height:44px;padding:0 12px;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-decoration:none">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h3l2-6 4 12 3-9 2 3h4"/></svg>
       Эффекты
-    </button>
-    <button style="display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-align:left">
+    </a>
+    <a href="record.html" style="display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;min-height:44px;padding:0 12px;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-decoration:none">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
       Запись
-    </button>
+    </a>
     <a href="devices.html" style="display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;min-height:44px;padding:0 12px;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-decoration:none">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="3"/><circle cx="12" cy="14" r="3.5"/><circle cx="12" cy="7" r="1"/></svg>
       Устройства
     </a>
     <a href="settings.html" style="display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;min-height:44px;padding:0 12px;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-decoration:none">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>
       Настройки
     </a>
 
@@ -67,7 +67,7 @@ html,body{height:100%;overflow:hidden}
       <span style="align-self:flex-start;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 10px;border-radius:99px;background:var(--ok-soft);color:var(--ok)">
         <span style="width:7px;height:7px;border-radius:50%;background:var(--ok)"></span>Движок работает
       </span>
-      <span style="font:400 12px/1.5 var(--f-mono);color:var(--muted)">48 кГц · 256 смп<br>задержка 5.3 мс</span>
+      <span style="font:400 12px/1.5 var(--f-mono);color:var(--muted)">48 кГц · 128 смп</span>
     </div>
   </div>
 
@@ -87,10 +87,13 @@ html,body{height:100%;overflow:hidden}
 
     <div style="background:var(--signal-soft);border-radius:20px;padding:18px 22px;display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between">
       <div style="min-width:0">
-        <div style="font:600 20px/1.2 var(--f-display);margin-bottom:4px">Звучание выходов</div>
-        <div style="font-size:13px;color:var(--muted)">Общая громкость и тембр каждого выхода. Маршруты дорожек остаются на странице «Микшер».</div>
+        <div style="font:600 20px/1.2 var(--f-display);margin-bottom:4px">Громкость выходов</div>
+        <div style="font-size:13px;color:var(--muted)">Общая громкость и Mute каждого выхода. Маршруты дорожек остаются на странице «Микшер». Регуляторы «Бас» и «ВЧ» появятся позже.</div>
       </div>
-      <a href="devices.html" style="display:inline-flex;align-items:center;min-height:44px;box-sizing:border-box;padding:9px 18px;border-radius:12px;border:1px solid var(--signal);background:var(--signal);color:var(--signal-ink);font:500 14px var(--f-body);text-decoration:none">Выбрать устройства</a>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <button data-act="restart" title="Остановить и заново запустить звуковой движок (Ctrl+R). Устройства и настройки вернутся сами." style="min-height:44px;box-sizing:border-box;padding:9px 18px;border-radius:12px;border:1px solid var(--signal);background:none;color:var(--signal);font:500 14px var(--f-body)">Перезапустить движок</button>
+        <a href="devices.html" style="display:inline-flex;align-items:center;min-height:44px;box-sizing:border-box;padding:9px 18px;border-radius:12px;border:1px solid var(--signal);background:var(--signal);color:var(--signal-ink);font:500 14px var(--f-body);text-decoration:none">Выбрать устройства</a>
+      </div>
     </div>
 
     <div style="flex:1;min-height:0;display:flex;gap:14px">
@@ -103,9 +106,10 @@ html,body{height:100%;overflow:hidden}
               <div style="display:flex;flex-direction:column;gap:4px">
                 <span style="align-self:flex-start;font:600 12.5px var(--f-mono);padding:3px 10px;border-radius:99px;background:var(--signal-soft);color:var(--signal)">{{m.id}}</span>
                 <span style="font:600 15px/1.2 var(--f-body)">{{m.role}}</span>
-                <span style="font-size:12px;line-height:1.35;color:var(--muted);min-height:32px">{{m.device}}</span>
+                <span style="font-size:12px;line-height:1.35;color:{{m.nameColor}};min-height:32px;overflow-wrap:anywhere">{{m.device}}</span>
+                <span title="{{m.hint}}" style="align-self:flex-start;font-size:12px;padding:2px 10px;border-radius:99px;white-space:nowrap;max-width:100%;box-sizing:border-box;overflow:hidden;text-overflow:ellipsis;{{m.pillStyle}}">{{m.status}}</span>
               </div>
-              <div style="height:26px;border-radius:9px;background:var(--bg);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font:500 13px var(--f-mono);font-variant-numeric:tabular-nums">{{m.dbText}}</div>
+              <div data-bdb="{{m.k}}" style="height:26px;border-radius:9px;background:var(--bg);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font:500 13px var(--f-mono);font-variant-numeric:tabular-nums">{{m.dbText}}</div>
               <div style="flex-grow:1;min-height:0;display:flex;justify-content:center;gap:7px">
                 <div style="position:relative;width:26px">
                   <span style="position:absolute;right:0;bottom:100%;transform:translateY(50%);font:400 10px var(--f-mono);color:var(--muted)">+12</span>
@@ -117,36 +121,22 @@ html,body{height:100%;overflow:hidden}
                 </div>
                 <div style="display:flex;gap:3px">
                   <div style="position:relative;width:8px;border-radius:3px;background:var(--surface-2);overflow:hidden">
-                    <div style="position:absolute;inset:0;background:linear-gradient(to top,var(--ok) 0%,var(--ok) 62%,var(--m-mid) 62%,var(--m-mid) 84%,var(--bad) 84%,var(--bad) 100%);clip-path:inset({{m.meterL}}% 0 0 0)"></div>
+                    <div data-bmeter="{{m.k}}l" style="position:absolute;inset:0;background:linear-gradient(to top,var(--ok) 0%,var(--ok) 62%,var(--m-mid) 62%,var(--m-mid) 84%,var(--bad) 84%,var(--bad) 100%);clip-path:inset({{m.meterL}}% 0 0 0)"></div>
                     <div style="position:absolute;inset:0;background:repeating-linear-gradient(to bottom,transparent 0,transparent 4px,var(--surface) 4px,var(--surface) 6px)"></div>
                   </div>
                   <div style="position:relative;width:8px;border-radius:3px;background:var(--surface-2);overflow:hidden">
-                    <div style="position:absolute;inset:0;background:linear-gradient(to top,var(--ok) 0%,var(--ok) 62%,var(--m-mid) 62%,var(--m-mid) 84%,var(--bad) 84%,var(--bad) 100%);clip-path:inset({{m.meterR}}% 0 0 0)"></div>
+                    <div data-bmeter="{{m.k}}r" style="position:absolute;inset:0;background:linear-gradient(to top,var(--ok) 0%,var(--ok) 62%,var(--m-mid) 62%,var(--m-mid) 84%,var(--bad) 84%,var(--bad) 100%);clip-path:inset({{m.meterR}}% 0 0 0)"></div>
                     <div style="position:absolute;inset:0;background:repeating-linear-gradient(to bottom,transparent 0,transparent 4px,var(--surface) 4px,var(--surface) 6px)"></div>
                   </div>
                 </div>
-                <div style="position:relative;width:40px">
+                <div data-bfader="{{m.k}}" role="slider" tabindex="0" aria-label="Громкость {{m.id}}" aria-orientation="vertical" aria-valuemin="-48" aria-valuemax="12" aria-valuenow="{{m.g}}" aria-valuetext="{{m.dbText}}" style="position:relative;width:40px;touch-action:none;cursor:ns-resize">
                   <div style="position:absolute;left:50%;top:0;bottom:0;width:6px;margin-left:-3px;border-radius:3px;background:var(--surface-2);border:1px solid var(--line);box-sizing:border-box"></div>
-                  <div style="position:absolute;left:1px;right:1px;bottom:calc({{m.pos}}% - 17px);height:34px;border-radius:10px;background:var(--surface);border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.14);box-sizing:border-box;display:flex;align-items:center;justify-content:center">
+                  <div data-bcap="{{m.k}}" style="position:absolute;left:1px;right:1px;bottom:calc({{m.pos}}% - 17px);height:34px;border-radius:10px;background:var(--surface);border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.14);box-sizing:border-box;display:flex;align-items:center;justify-content:center">
                     <div style="width:60%;height:3px;border-radius:2px;background:var(--signal)"></div>
                   </div>
                 </div>
               </div>
-              <div style="display:flex;justify-content:space-around;padding:10px;border-radius:12px;background:var(--surface-2)">
-                <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
-                  <div style="width:38px;height:38px;border-radius:50%;background:conic-gradient(from -135deg,var(--signal) 0deg,var(--signal) {{m.k1Deg}}deg,var(--line) {{m.k1Deg}}deg,var(--line) 270deg,transparent 270deg);display:flex;align-items:center;justify-content:center">
-                    <div style="width:30px;height:30px;border-radius:50%;background:var(--surface);position:relative;transform:rotate({{m.k1Rot}}deg)"><div style="position:absolute;left:14px;top:3px;width:2px;height:9px;border-radius:1px;background:var(--fg)"></div></div>
-                  </div>
-                  <span style="font-size:12px;color:var(--muted)">Бас</span>
-                </div>
-                <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
-                  <div style="width:38px;height:38px;border-radius:50%;background:conic-gradient(from -135deg,var(--signal) 0deg,var(--signal) {{m.k2Deg}}deg,var(--line) {{m.k2Deg}}deg,var(--line) 270deg,transparent 270deg);display:flex;align-items:center;justify-content:center">
-                    <div style="width:30px;height:30px;border-radius:50%;background:var(--surface);position:relative;transform:rotate({{m.k2Rot}}deg)"><div style="position:absolute;left:14px;top:3px;width:2px;height:9px;border-radius:1px;background:var(--fg)"></div></div>
-                  </div>
-                  <span style="font-size:12px;color:var(--muted)">ВЧ</span>
-                </div>
-              </div>
-              <button style="min-height:38px;border-radius:12px;font:500 13px var(--f-body);background:none;color:var(--fg);border:1px solid var(--line)">Mute</button>
+              <button data-bmute="{{m.k}}" aria-pressed="{{m.muted}}" style="min-height:38px;border-radius:12px;font:500 13px var(--f-body);{{m.muteStyle}}">Mute</button>
             </div>
           </sc-for>
         </div>
@@ -160,9 +150,10 @@ html,body{height:100%;overflow:hidden}
               <div style="display:flex;flex-direction:column;gap:4px">
                 <span style="align-self:flex-start;font:600 12.5px var(--f-mono);padding:3px 10px;border-radius:99px;background:var(--warn-soft);color:var(--warn)">{{m.id}}</span>
                 <span style="font:600 15px/1.2 var(--f-body)">{{m.role}}</span>
-                <span style="font-size:12px;line-height:1.35;color:var(--muted);min-height:32px">{{m.device}}</span>
+                <span style="font-size:12px;line-height:1.35;color:{{m.nameColor}};min-height:32px;overflow-wrap:anywhere">{{m.device}}</span>
+                <span title="{{m.hint}}" style="align-self:flex-start;font-size:12px;padding:2px 10px;border-radius:99px;white-space:nowrap;max-width:100%;box-sizing:border-box;overflow:hidden;text-overflow:ellipsis;{{m.pillStyle}}">{{m.status}}</span>
               </div>
-              <div style="height:26px;border-radius:9px;background:var(--bg);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font:500 13px var(--f-mono);font-variant-numeric:tabular-nums">{{m.dbText}}</div>
+              <div data-bdb="{{m.k}}" style="height:26px;border-radius:9px;background:var(--bg);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font:500 13px var(--f-mono);font-variant-numeric:tabular-nums">{{m.dbText}}</div>
               <div style="flex-grow:1;min-height:0;display:flex;justify-content:center;gap:7px">
                 <div style="position:relative;width:26px">
                   <span style="position:absolute;right:0;bottom:100%;transform:translateY(50%);font:400 10px var(--f-mono);color:var(--muted)">+12</span>
@@ -174,36 +165,22 @@ html,body{height:100%;overflow:hidden}
                 </div>
                 <div style="display:flex;gap:3px">
                   <div style="position:relative;width:8px;border-radius:3px;background:var(--surface-2);overflow:hidden">
-                    <div style="position:absolute;inset:0;background:linear-gradient(to top,var(--ok) 0%,var(--ok) 62%,var(--m-mid) 62%,var(--m-mid) 84%,var(--bad) 84%,var(--bad) 100%);clip-path:inset({{m.meterL}}% 0 0 0)"></div>
+                    <div data-bmeter="{{m.k}}l" style="position:absolute;inset:0;background:linear-gradient(to top,var(--ok) 0%,var(--ok) 62%,var(--m-mid) 62%,var(--m-mid) 84%,var(--bad) 84%,var(--bad) 100%);clip-path:inset({{m.meterL}}% 0 0 0)"></div>
                     <div style="position:absolute;inset:0;background:repeating-linear-gradient(to bottom,transparent 0,transparent 4px,var(--surface) 4px,var(--surface) 6px)"></div>
                   </div>
                   <div style="position:relative;width:8px;border-radius:3px;background:var(--surface-2);overflow:hidden">
-                    <div style="position:absolute;inset:0;background:linear-gradient(to top,var(--ok) 0%,var(--ok) 62%,var(--m-mid) 62%,var(--m-mid) 84%,var(--bad) 84%,var(--bad) 100%);clip-path:inset({{m.meterR}}% 0 0 0)"></div>
+                    <div data-bmeter="{{m.k}}r" style="position:absolute;inset:0;background:linear-gradient(to top,var(--ok) 0%,var(--ok) 62%,var(--m-mid) 62%,var(--m-mid) 84%,var(--bad) 84%,var(--bad) 100%);clip-path:inset({{m.meterR}}% 0 0 0)"></div>
                     <div style="position:absolute;inset:0;background:repeating-linear-gradient(to bottom,transparent 0,transparent 4px,var(--surface) 4px,var(--surface) 6px)"></div>
                   </div>
                 </div>
-                <div style="position:relative;width:40px">
+                <div data-bfader="{{m.k}}" role="slider" tabindex="0" aria-label="Громкость {{m.id}}" aria-orientation="vertical" aria-valuemin="-48" aria-valuemax="12" aria-valuenow="{{m.g}}" aria-valuetext="{{m.dbText}}" style="position:relative;width:40px;touch-action:none;cursor:ns-resize">
                   <div style="position:absolute;left:50%;top:0;bottom:0;width:6px;margin-left:-3px;border-radius:3px;background:var(--surface-2);border:1px solid var(--line);box-sizing:border-box"></div>
-                  <div style="position:absolute;left:1px;right:1px;bottom:calc({{m.pos}}% - 17px);height:34px;border-radius:10px;background:var(--surface);border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.14);box-sizing:border-box;display:flex;align-items:center;justify-content:center">
+                  <div data-bcap="{{m.k}}" style="position:absolute;left:1px;right:1px;bottom:calc({{m.pos}}% - 17px);height:34px;border-radius:10px;background:var(--surface);border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.14);box-sizing:border-box;display:flex;align-items:center;justify-content:center">
                     <div style="width:60%;height:3px;border-radius:2px;background:var(--warn)"></div>
                   </div>
                 </div>
               </div>
-              <div style="display:flex;justify-content:space-around;padding:10px;border-radius:12px;background:var(--surface-2)">
-                <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
-                  <div style="width:38px;height:38px;border-radius:50%;background:conic-gradient(from -135deg,var(--signal) 0deg,var(--signal) {{m.k1Deg}}deg,var(--line) {{m.k1Deg}}deg,var(--line) 270deg,transparent 270deg);display:flex;align-items:center;justify-content:center">
-                    <div style="width:30px;height:30px;border-radius:50%;background:var(--surface);position:relative;transform:rotate({{m.k1Rot}}deg)"><div style="position:absolute;left:14px;top:3px;width:2px;height:9px;border-radius:1px;background:var(--fg)"></div></div>
-                  </div>
-                  <span style="font-size:12px;color:var(--muted)">Бас</span>
-                </div>
-                <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
-                  <div style="width:38px;height:38px;border-radius:50%;background:conic-gradient(from -135deg,var(--signal) 0deg,var(--signal) {{m.k2Deg}}deg,var(--line) {{m.k2Deg}}deg,var(--line) 270deg,transparent 270deg);display:flex;align-items:center;justify-content:center">
-                    <div style="width:30px;height:30px;border-radius:50%;background:var(--surface);position:relative;transform:rotate({{m.k2Rot}}deg)"><div style="position:absolute;left:14px;top:3px;width:2px;height:9px;border-radius:1px;background:var(--fg)"></div></div>
-                  </div>
-                  <span style="font-size:12px;color:var(--muted)">ВЧ</span>
-                </div>
-              </div>
-              <button style="min-height:38px;border-radius:12px;font:500 13px var(--f-body);background:none;color:var(--fg);border:1px solid var(--line)">Mute</button>
+              <button data-bmute="{{m.k}}" aria-pressed="{{m.muted}}" style="min-height:38px;border-radius:12px;font:500 13px var(--f-body);{{m.muteStyle}}">Mute</button>
             </div>
           </sc-for>
         </div>
@@ -216,30 +193,44 @@ html,body{height:100%;overflow:hidden}
 <script>
 class Component extends DCLogic {
   renderVals() {
+    const B = window.Bridge;
+    const st = B.state;                                   // состояние движка (null, если не подключён)
+    const M = B.meters;
+    const dev = (st && st.dev) || B.settings.devices || {};
+    const ok = (st && st.ok) || {};
+    const present = (n) => (B.devices.play || []).some((d) => d.name === n);
     const pos = (db) => Math.max(0, Math.min(100, (db + 48) / 60 * 100));
-    const fmt = (db) => (db > 0 ? '+' : '') + db.toFixed(1) + ' дБ';
-    const top = (lvl) => Math.round(100 - lvl);
-    const mk = (id, role, device, db, l, r, k1, k2) => ({
-      id, role, device, dbText: fmt(db), pos: pos(db),
-      meterL: top(l), meterR: top(r),
-      k1Deg: Math.round(k1 * 270), k1Rot: Math.round(-135 + k1 * 270),
-      k2Deg: Math.round(k2 * 270), k2Rot: Math.round(-135 + k2 * 270)
-    });
+    const fmt = (db) => (db > 0 ? '+' : '') + Number(db).toFixed(1) + ' дБ';
+    const top = (lin) => Math.round(100 - Math.max(0, Math.min(100, (20 * Math.log10(Math.max(lin, 1e-6)) + 60) / 60 * 100)));
+    const pill = (tone) => tone === 'muted' ? 'background:var(--bg);color:var(--muted)' : 'background:var(--' + tone + '-soft);color:var(--' + tone + ')';
+    const mk = (k, key, id, role) => {
+      const name = dev[key] || '';
+      const b = st ? st.buses[k] : { g: 0, m: 0 };
+      let status, tone, hint;
+      if (!st) { status = 'Нет связи'; tone = 'warn'; hint = 'Движок не отвечает. Попробуйте Ctrl+R.'; }
+      else if (!name) { status = 'Не назначено'; tone = 'muted'; hint = 'Выберите устройство на экране «Устройства».'; }
+      else if (ok[key]) { status = 'Работает'; tone = 'ok'; hint = 'Звук идёт на это устройство.'; }
+      else if (!present(name)) { status = 'Отключено, жду'; tone = 'warn'; hint = 'Устройства нет в системе. Как только оно появится, микшер подключит его сам.'; }
+      else { status = 'Не открылось'; tone = 'bad'; hint = 'Устройство есть, но занято другой программой (например, Voicemeeter). Закройте её, микшер повторит попытку сам.'; }
+      return {
+        k, id, role, status, hint, pillStyle: pill(tone),
+        device: name || 'Не выбрано',
+        nameColor: name ? 'var(--fg)' : 'var(--muted)',
+        g: b.g, dbText: fmt(b.g), pos: pos(b.g),
+        meterL: M ? top(M.b[k][0]) : 100, meterR: M ? top(M.b[k][1]) : 100,
+        muted: !!b.m,
+        muteStyle: b.m ? 'background:var(--bad);color:#fff;border:1px solid var(--bad)' : 'background:none;color:var(--fg);border:1px solid var(--line)'
+      };
+    };
     return {
-      aBuses: [
-        mk('A1', 'Колонки',  'Динамики (Realtek)',     -8, 0,  0,  0.5,  0.5),
-        mk('A2', 'Наушники', 'USB PnP Audio Device',   -2, 74, 70, 0.55, 0.5),
-        mk('A3', 'Запасной', 'Не выбрано',              0, 0,  0,  0.5,  0.5)
-      ],
-      bBuses: [
-        mk('B1', 'Для стрима',  'Виртуальный микрофон → OBS',     0, 74, 70, 0.5, 0.5),
-        mk('B2', 'Для звонков', 'Виртуальный микрофон → Discord', 0, 62, 58, 0.5, 0.5)
-      ]
+      aBuses: [mk(0, 'a1', 'A1', 'Колонки'), mk(1, 'a2', 'A2', 'Наушники'), mk(2, 'a3', 'A3', 'Запасной')],
+      bBuses: [mk(3, 'b1', 'B1', 'Для стрима'), mk(4, 'b2', 'B2', 'Для звонков')]
     };
   }
 }
 </script>
 <script>DC.mount(Component);</script>
 <script src="app.js"></script>
+<script src="outputs.js"></script>
 </body>
 </html>

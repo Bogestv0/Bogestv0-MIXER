@@ -69,7 +69,7 @@
       case 'devices': B.devices = m; emit('devices'); break;
       case 'm': B.meters = m; emit('meters'); break;
       case 'err': B.lastError = m.msg; emit('err'); break;
-      case 'exit': B.connected = false; B.state = null; B.lastError = 'Движок остановился'; emit('conn'); emit('err'); break;
+      case 'exit': B.connected = false; B.state = null; B.lastError = 'Движок остановился'; emit('conn'); emit('err'); autoRestart(); break;
     }
   }
 
@@ -131,11 +131,63 @@
     } catch (e) { B.lastError = 'Не удалось сохранить настройки'; emit('err'); }
   };
 
+  /* ---------- перезапуск движка (этап 5) ---------- */
+  // Сообщение, которое окно покажет внизу справа (не ошибка).
+  B.notice = function (msg) { B.lastNotice = msg; emit('notice'); };
+
+  let restarting = false;
+  // Останавливает движок, запускает заново и возвращает ему сохранённые устройства и настройки.
+  B.restartEngine = async function (auto) {
+    if (B.mode !== 'tauri') { B.notice('Перезапуск движка работает в установленном приложении.'); return false; }
+    if (restarting) return false;
+    restarting = true;
+    try {
+      if (!auto) await B.saveSettings();   // последние движения фейдеров должны успеть записаться
+      B.applied = false; B.connected = false; B.state = null; B.meters = null;
+      emit('conn');
+      const info = JSON.parse(await T.core.invoke('engine_restart'));
+      try { localStorage.setItem('bogestv0.boot', String(info.boot)); } catch (e) { /* ok */ }
+      B.send('devices');
+      B.send('get');
+      applySaved();
+      // Пока движок применяет сохранённое, ничего не пишем в файл (как при первом запуске).
+      setTimeout(() => { B.applied = true; emit('ready'); }, 3000);
+      B.notice(auto ? 'Движок остановился и был перезапущен.' : 'Движок перезапущен.');
+      return true;
+    } catch (e) {
+      B.lastError = 'Не удалось перезапустить движок: ' + e;
+      emit('err');
+      return false;
+    } finally { restarting = false; }
+  };
+
+  // Движок упал сам: перезапускаем. Если падает снова и снова (больше 3 раз за минуту), останавливаемся и просим перезапустить программу.
+  let crashes = [];
+  function autoRestart() {
+    if (B.mode !== 'tauri') return;
+    const now = Date.now();
+    crashes = crashes.filter((t) => now - t < 60000);
+    crashes.push(now);
+    if (crashes.length > 3) { B.lastError = 'Движок останавливается снова и снова. Закройте программу совсем (трей → Выход) и откройте заново.'; emit('err'); return; }
+    setTimeout(() => B.restartEngine(true), 500);
+  }
+
+  // Ctrl+R (и Cmd+R) перезапускает движок, а не страницу.
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.code === 'KeyR' || e.key === 'r' || e.key === 'R')) {
+      e.preventDefault();
+      B.restartEngine(false);
+    }
+  });
+
   /* ---------- действия, общие для экранов ---------- */
   B.setGain = (i, db) => B.send(`set strip ${i} gain ${db}`);
   B.setMute = (i, on) => B.send(`set strip ${i} mute ${on ? 1 : 0}`);
   B.setSolo = (i, on) => B.send(`set strip ${i} solo ${on ? 1 : 0}`);
   B.setSrc = (i, name) => B.send(`set strip ${i} src ${name}`);
+  // Шины: 0..2 = A1..A3, 3..4 = B1, B2. Фейдер −48…+12 дБ.
+  B.setBusGain = (k, db) => B.send(`set bus ${k} gain ${db}`);
+  B.setBusMute = (k, on) => B.send(`set bus ${k} mute ${on ? 1 : 0}`);
   B.setDevice = (slot, name) => B.send(`set dev ${slot} ${name || '-'}`);
   // Микрофон: key = g | gate | hpf | comp | ns | amt. Окно сразу показывает новое значение, не дожидаясь ответа движка.
   B.setMic = function (i, key, v) {

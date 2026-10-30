@@ -233,12 +233,14 @@ class Component extends DCLogic {
     const slots = slotDefs.map((s) => {
       const name = dev[s.key] || '';
       const bad = name && st && !okm[s.key];
+      // Устройства нет в системе (выдернули): микшер сам подключит его, когда оно появится.
+      const gone = bad && !list.some((d) => d.name === name);
       return {
         tag: label[s.key], role: s.role,
-        device: name ? (bad ? 'Не открылось (занято?): ' + name : name) : 'Ничего не подключено',
-        nameColor: bad ? 'var(--bad)' : (name ? 'var(--fg)' : 'var(--muted)'),
+        device: name ? (gone ? 'Отключено, жду: ' + name : bad ? 'Не открылось (занято?): ' + name : name) : 'Ничего не подключено',
+        nameColor: gone ? 'var(--warn)' : bad ? 'var(--bad)' : (name ? 'var(--fg)' : 'var(--muted)'),
         connected: !!name, empty: !name,
-        border: bad ? 'var(--bad)' : (name ? 'var(--signal)' : 'transparent'),
+        border: gone ? 'var(--warn)' : bad ? 'var(--bad)' : (name ? 'var(--signal)' : 'transparent'),
         tagStyle: 'background:var(--' + s.tone + '-soft);color:var(--' + s.tone + ')',
         disconnect: () => B.setDevice(s.key, '')
       };

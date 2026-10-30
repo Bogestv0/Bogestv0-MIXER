@@ -28,7 +28,7 @@
 #include <io.h>
 #endif
 
-static const char* VERSION = "0.2.0";
+static const char* VERSION = "0.3.0";
 
 struct Engine {
     std::atomic<float> gain_lin{1.0f};
@@ -188,6 +188,60 @@ static int selftest_mic() {
     return bad;
 }
 
+// ---------- проверка шин и переподключения устройств (этап 5), на «нулевом» бэкенде miniaudio ----------
+static int selftest_devices() {
+    int bad = 0;
+    auto check = [&](bool ok, const char* what) { std::printf("%s %s\n", ok ? "ok    " : "ОШИБКА", what); if (!ok) ++bad; };
+    ma_backend nb[] = {ma_backend_null};
+    ma_context ctx;
+    ma_context_config cc = ma_context_config_init();
+    if (ma_context_init(nb, 1, &cc, &ctx) != MA_SUCCESS) { std::printf("пропущено: нулевой звуковой бэкенд недоступен\n"); return 0; }
+    {
+        bg::Mixer m(&ctx);
+        // Фейдеры и Mute шин: границы и ошибки.
+        check(m.command("set bus 0 gain -6").empty() && std::fabs(m.buses[0].gain_db.load() + 6.0f) < 1e-6f, "шина: фейдер ставится");
+        m.command("set bus 1 gain 99");
+        m.command("set bus 2 gain -99");
+        check(m.buses[1].gain_db.load() == 12.0f && m.buses[2].gain_db.load() == -48.0f, "шина: фейдер ограничен -48…+12 дБ");
+        m.command("set bus 3 mute 1");
+        check(m.buses[3].mute.load() && !m.buses[4].mute.load(), "шина: Mute включается только у своей шины");
+        check(!m.command("set bus 7 gain 0").empty() && !m.command("set bus 0 bass 3").empty(), "шина: неверный номер и неизвестное свойство дают ошибку");
+
+        const std::string dev = m.debug_name(false);
+        if (dev.empty()) { std::printf("пропущено: нет устройств-пустышек\n"); }
+        else {
+            check(m.command("set dev a1 " + dev).empty() && m.slot_ok(2), "устройство A1 открылось (ведущее)");
+            check(m.command("set dev a2 " + dev).empty() && m.slot_ok(2) && m.slot_ok(3), "устройство A2 открылось");
+
+            // Обычное устройство остановилось (выдернули наушники): открывается само, остальные не трогаем.
+            const void* master_before = m.debug_dev(2);
+            m.debug_stop(3);
+            check(!m.debug_started(3), "(проверка самой проверки) после остановки устройство A2 действительно не работает");
+            std::string err = m.watchdog();
+            check(err.empty() && m.slot_ok(3), "сторож: остановившееся устройство A2 открыто заново");
+            check(m.slot_ok(2) && m.debug_dev(2) == master_before, "сторож: ведущее устройство при этом не пересобиралось");
+
+            // Остановилось ведущее: тракт собирается заново.
+            m.debug_stop(2);
+            check(!m.debug_started(2), "(проверка самой проверки) после остановки ведущее устройство действительно не работает");
+            err = m.watchdog();
+            check(err.empty() && m.slot_ok(2) && m.slot_ok(3), "сторож: остановившееся ведущее устройство вернулось вместе с трактом");
+
+            // Назначенного устройства нет в системе: ждём, ничего не пересобираем и не шумим.
+            m.command("set dev a3 Такого устройства нет");
+            const void* before = m.debug_dev(2);
+            bool quiet = true;
+            for (int i = 0; i < 3; ++i) quiet = quiet && m.watchdog().empty();
+            check(quiet && !m.slot_ok(4) && m.slot_ok(2) && m.debug_dev(2) == before, "сторож: отсутствующее устройство A3 ждёт, остальной звук не прерывается");
+            m.command("set dev a3 -");
+        }
+        m.command("set dev a1 -");
+        m.command("set dev a2 -");
+    }
+    ma_context_uninit(&ctx);
+    return bad;
+}
+
 static int selftest() {
     int bad = 0;
     auto check = [&](bool ok, const char* what) { std::printf("%s %s\n", ok ? "ok    " : "ОШИБКА", what); if (!ok) ++bad; };
@@ -213,6 +267,7 @@ static int selftest() {
     float v = m.read(0);
     check(std::fabs(v - 0.75f) < 1e-6f && std::fabs(m.peak[0].load() - 0.6f) < 1e-6f, "метр: плавный спад");
     bad += selftest_mic();
+    bad += selftest_devices();
     std::printf(bad ? "\nЕсть ошибки: %d\n" : "\nВсе проверки пройдены.\n", bad);
     return bad ? 1 : 0;
 }

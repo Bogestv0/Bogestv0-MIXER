@@ -3,8 +3,9 @@
 
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tauri::{
     menu::{Menu, MenuItem},
@@ -14,11 +15,14 @@ use tauri::{
 
 /// Запущенный звуковой движок (engine.exe --serve). Окно шлёт ему строки-команды,
 /// а ответы движка (JSON по одной строке) пересылает в интерфейс событием "engine-line".
+/// Движок можно перезапустить, не закрывая программу (команда engine_restart).
 struct Engine {
     stdin: Mutex<Option<ChildStdin>>,
     child: Mutex<Option<Child>>,
     /// Время запуска движка: интерфейс по нему понимает, что настройки надо отправить заново.
-    boot: u128,
+    boot: AtomicU64,
+    /// Номер запуска. Старый движок после перезапуска больше ничего не сообщает окну.
+    gen: AtomicU64,
 }
 
 fn engine_path() -> std::path::PathBuf {
@@ -36,8 +40,15 @@ fn engine_path() -> std::path::PathBuf {
     std::env::var("BOGESTV0_ENGINE").map(Into::into).unwrap_or_else(|_| name.into())
 }
 
-fn spawn_engine(app: &AppHandle) -> Engine {
-    let boot = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+fn current_gen(app: &AppHandle, fallback: u64) -> u64 {
+    app.try_state::<Engine>().map(|e| e.gen.load(Ordering::SeqCst)).unwrap_or(fallback)
+}
+
+/// Запускает движок и записывает его в `engine`. Старый движок к этому моменту уже остановлен.
+fn start_engine(app: &AppHandle, engine: &Engine) {
+    let boot = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+    let gen = engine.gen.fetch_add(1, Ordering::SeqCst) + 1;
+    engine.boot.store(boot, Ordering::SeqCst);
     let mut cmd = Command::new(engine_path());
     cmd.arg("--serve").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
     #[cfg(windows)]
@@ -52,21 +63,67 @@ fn spawn_engine(app: &AppHandle) -> Engine {
                 let handle = app.clone();
                 std::thread::spawn(move || {
                     for line in BufReader::new(out).lines().map_while(Result::ok) {
+                        if current_gen(&handle, gen) != gen {
+                            return; // это уже старый движок
+                        }
                         let _ = handle.emit("engine-line", line);
                     }
-                    let _ = handle.emit("engine-line", r#"{"t":"exit"}"#);
+                    if current_gen(&handle, gen) == gen {
+                        let _ = handle.emit("engine-line", r#"{"t":"exit"}"#);
+                    }
                 });
             }
-            Engine { stdin: Mutex::new(stdin), child: Mutex::new(Some(child)), boot }
+            if let Ok(mut s) = engine.stdin.lock() {
+                *s = stdin;
+            }
+            if let Ok(mut c) = engine.child.lock() {
+                *c = Some(child);
+            }
         }
         Err(e) => {
             let _ = app.emit(
                 "engine-line",
                 format!(r#"{{"t":"err","msg":"движок не запустился: {}"}}"#, e.to_string().replace('"', "'").replace('\\', "/")),
             );
-            Engine { stdin: Mutex::new(None), child: Mutex::new(None), boot }
+            if let Ok(mut s) = engine.stdin.lock() {
+                *s = None;
+            }
+            if let Ok(mut c) = engine.child.lock() {
+                *c = None;
+            }
         }
     }
+}
+
+/// Просит движок завершиться и ждёт до секунды: так он успевает отпустить звуковые устройства
+/// (в монопольном режиме новый движок иначе не смог бы их открыть). Не ушёл, значит, завершаем силой.
+fn stop_engine(engine: &Engine) {
+    engine.gen.fetch_add(1, Ordering::SeqCst); // старый движок замолкает для окна сразу
+    if let Ok(mut s) = engine.stdin.lock() {
+        if let Some(stdin) = s.as_mut() {
+            let _ = writeln!(stdin, "quit");
+            let _ = stdin.flush();
+        }
+        *s = None;
+    }
+    if let Ok(mut c) = engine.child.lock() {
+        if let Some(mut child) = c.take() {
+            let t0 = Instant::now();
+            while t0.elapsed() < Duration::from_millis(1000) {
+                if matches!(child.try_wait(), Ok(Some(_))) {
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+fn engine_info_json(engine: &Engine) -> String {
+    let running = engine.stdin.lock().map(|g| g.is_some()).unwrap_or(false);
+    format!(r#"{{"boot":{},"running":{}}}"#, engine.boot.load(Ordering::SeqCst), running)
 }
 
 #[tauri::command]
@@ -83,8 +140,15 @@ fn engine_send(line: String, engine: State<Engine>) -> Result<(), String> {
 
 #[tauri::command]
 fn engine_info(engine: State<Engine>) -> String {
-    let running = engine.stdin.lock().map(|g| g.is_some()).unwrap_or(false);
-    format!(r#"{{"boot":{},"running":{}}}"#, engine.boot, running)
+    engine_info_json(&engine)
+}
+
+/// Перезапуск движка (Ctrl+R и кнопка «Перезапустить движок»). Окно потом само отправляет ему сохранённые настройки.
+#[tauri::command]
+async fn engine_restart(app: AppHandle, engine: State<'_, Engine>) -> Result<String, String> {
+    stop_engine(&engine);
+    start_engine(&app, &engine);
+    Ok(engine_info_json(&engine))
 }
 
 fn settings_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
@@ -128,9 +192,10 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![engine_send, engine_info, settings_load, settings_save])
+        .invoke_handler(tauri::generate_handler![engine_send, engine_info, engine_restart, settings_load, settings_save])
         .setup(|app| {
-            let engine = spawn_engine(app.handle());
+            let engine = Engine { stdin: Mutex::new(None), child: Mutex::new(None), boot: AtomicU64::new(0), gen: AtomicU64::new(0) };
+            start_engine(app.handle(), &engine);
             app.manage(engine);
 
             let show = MenuItem::with_id(app, "show", "Открыть микшер", true, None::<&str>)?;
@@ -170,21 +235,10 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("ошибка запуска Bogestv0 MIXER")
         .run(|app, event| {
-            // При выходе просим движок завершиться (закрываем его stdin) и добиваем, если завис.
+            // При выходе просим движок завершиться (stop_engine ждёт его и добивает, если завис).
             if let RunEvent::Exit = event {
                 if let Some(engine) = app.try_state::<Engine>() {
-                    if let Ok(mut s) = engine.stdin.lock() {
-                        if let Some(stdin) = s.as_mut() {
-                            let _ = writeln!(stdin, "quit");
-                        }
-                        *s = None;
-                    }
-                    if let Ok(mut c) = engine.child.lock() {
-                        if let Some(child) = c.as_mut() {
-                            std::thread::sleep(std::time::Duration::from_millis(300));
-                            let _ = child.kill();
-                        }
-                    }
+                    stop_engine(&engine);
                 }
             }
         });

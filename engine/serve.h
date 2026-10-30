@@ -12,6 +12,9 @@
 //                | ns 0..3 (выкл / мягкое / сильное / максимум) | nsamt 0..100    (I = 0 или 1, микрофон)
 //   set dev СЛОТ ИМЯ_УСТРОЙСТВА   (пустое имя или "-" отключает слот)
 // Ответы: строки JSON (hello, devices, state, m, err).
+// Устройства (этап 5): сторож раз в ~2 секунды проверяет назначенные устройства. Выдернули наушники, и слот освободился;
+// вставили, и он открылся сам, а остальной звук не прерывается. Если пропало ведущее устройство (первая рабочая шина A/B),
+// тракт собирается заново.
 #pragma once
 
 #include "dsp.h"
@@ -39,7 +42,7 @@ constexpr int kSlots = 7;
 constexpr int kMics = 2;
 constexpr size_t kMaxBlock = 4096;  // самый большой блок за один проход
 static const char* kSlotNames[kSlots] = {"hw1", "hw2", "a1", "a2", "a3", "b1", "b2"};
-static const char* kEngineVersion = "0.2.0";
+static const char* kEngineVersion = "0.3.0";
 
 // Кольцо «один пишет, один читает» для стерео-кадров. Связывает потоки разных устройств.
 struct Ring {
@@ -48,6 +51,9 @@ struct Ring {
     std::atomic<size_t> r{0}, w{0};
 
     void init(size_t frames) { cap = frames; buf.assign(frames * 2, 0.0f); r = 0; w = 0; }
+
+    // Выбросить накопленное. Вызывать, только когда читающее устройство остановлено.
+    void clear() { r.store(w.load(std::memory_order_acquire), std::memory_order_release); }
 
     void push(const float* in, size_t n) {
         size_t wv = w.load(std::memory_order_relaxed), rv = r.load(std::memory_order_acquire);
@@ -140,15 +146,15 @@ public:
 
     // ---------- устройства ----------
     void refresh_devices() {
-        ma_device_info *pp, *cp;
-        ma_uint32 pc, cc;
-        if (ma_context_get_devices(ctx_, &pp, &pc, &cp, &cc) == MA_SUCCESS) {
-            play_.assign(pp, pp + pc);
-            cap_.assign(cp, cp + cc);
-        }
+        std::lock_guard<std::mutex> lk(dev_mu_);
+        refresh_locked();
     }
 
+    // Список устройств изменился с прошлой отправки окну (вставили или выдернули устройство).
+    bool take_devices_dirty() { return devices_dirty_.exchange(false); }
+
     std::string devices_json() const {
+        std::lock_guard<std::mutex> lk(dev_mu_);
         std::ostringstream o;
         o << "{\"t\":\"devices\",\"cap\":[";
         for (size_t i = 0; i < cap_.size(); ++i)
@@ -167,6 +173,7 @@ public:
 
     // Присваивает устройство слоту (по точному имени или по номеру) и пересобирает звуковой тракт.
     std::string set_device(int slot, const std::string& what) {
+        std::lock_guard<std::mutex> lk(dev_mu_);
         std::string name = what;
         if (name == "-") name.clear();
         if (!name.empty() && name.find_first_not_of("0123456789") == std::string::npos) {
@@ -174,9 +181,68 @@ public:
             const auto& list = slot < 2 ? cap_ : play_;
             name = idx < list.size() ? list[idx].name : "";
         }
-        std::lock_guard<std::mutex> lk(dev_mu_);
         names_[slot] = name;
         return rebuild();
+    }
+
+    // Сторож устройств. Вызывать примерно раз в 2 секунды из отдельного потока. Возвращает текст ошибки или пустую строку.
+    std::string watchdog() {
+        using clock = std::chrono::steady_clock;
+        std::lock_guard<std::mutex> lk(dev_mu_);
+        refresh_locked();
+        const auto now = clock::now();
+        bool changed = false, master_lost = false;
+        std::string err;
+
+        // 1) Устройства, которые остановились или пропали из системы. «Пропало из списка» считаем только со второго раза подряд:
+        //    один сбойный опрос Windows не должен гасить рабочее устройство.
+        for (int s = 0; s < kSlots; ++s) {
+            if (!dev_[s]) continue;
+            const bool started = ma_device_get_state(dev_[s].get()) == ma_device_state_started;
+            const bool present = find_id(s, names_[s]) != nullptr;
+            miss_[s] = present ? 0 : miss_[s] + 1;
+            if (started && miss_[s] < 2) continue;
+            changed = true;
+            if (master_ >= 0 && s == 2 + master_) master_lost = true;
+            else { close_slot(s); fails_[s] = 0; retry_at_[s] = now; }
+        }
+
+        if (master_lost) {
+            err = rebuild();
+            if (master_ < 0) rebuild_at_ = now + std::chrono::seconds(2);
+        } else if (master_ < 0) {
+            // Нет ведущего устройства: ждём, пока появится любое назначенное устройство выхода.
+            bool any = false;
+            for (int s = 2; s < kSlots; ++s) any = any || (!names_[s].empty() && find_id(s, names_[s]));
+            if (any && now >= rebuild_at_) {
+                err = rebuild();
+                changed = true;
+                rebuild_fails_ = master_ < 0 ? std::min(rebuild_fails_ + 1, 10) : 0;
+                rebuild_at_ = now + std::chrono::seconds(std::min(30, 2 * (rebuild_fails_ + 1)));
+            }
+        } else {
+            // Остальные назначенные устройства, которые сейчас закрыты, а в системе уже есть: открываем только их.
+            for (int s = 0; s < kSlots; ++s) {
+                if (dev_[s] || names_[s].empty() || !find_id(s, names_[s]) || now < retry_at_[s]) continue;
+                std::string e;
+                open_slot(s, false, e);
+                if (ok_[s]) { changed = true; fails_[s] = 0; if (s >= 2) buses[s - 2].ring.clear(); }
+                else if (fails_[s] == 1) err += e;   // об ошибке говорим один раз, дальше тихо пробуем реже
+            }
+        }
+        if (changed) dirty = true;
+        return err;
+    }
+
+    // Для самопроверки без звуковых устройств.
+    bool slot_ok(int s) const { return ok_[s]; }
+    const void* debug_dev(int s) const { return dev_[s].get(); }
+    bool debug_started(int s) const { return dev_[s] && ma_device_get_state(dev_[s].get()) == ma_device_state_started; }
+    void debug_stop(int s) { if (dev_[s]) ma_device_stop(dev_[s].get()); }
+    std::string debug_name(bool capture) const {
+        std::lock_guard<std::mutex> lk(dev_mu_);
+        const auto& l = capture ? cap_ : play_;
+        return l.empty() ? std::string() : std::string(l[0].name);
     }
 
     // ---------- состояние ----------
@@ -300,6 +366,9 @@ private:
     int master_ = -1;
     double latency_ms_ = 0.0;
     mutable std::mutex dev_mu_;
+    std::atomic<bool> devices_dirty_{false};
+    std::chrono::steady_clock::time_point retry_at_[kSlots], rebuild_at_;
+    int fails_[kSlots] = {}, miss_[kSlots] = {}, rebuild_fails_ = 0;
     std::vector<std::vector<float>> acc_;
     std::vector<float> tmp_;
 
@@ -316,9 +385,65 @@ private:
         return "";
     }
 
+    void refresh_locked() {
+        ma_device_info *pp, *cp;
+        ma_uint32 pc, cc;
+        if (ma_context_get_devices(ctx_, &pp, &pc, &cp, &cc) != MA_SUCCESS) return;
+        auto same = [](const std::vector<ma_device_info>& old, const ma_device_info* now, ma_uint32 n) {
+            if (old.size() != n) return false;
+            for (ma_uint32 i = 0; i < n; ++i) if (std::strcmp(old[i].name, now[i].name) != 0) return false;
+            return true;
+        };
+        const bool changed = !same(play_, pp, pc) || !same(cap_, cp, cc);
+        play_.assign(pp, pp + pc);
+        cap_.assign(cp, cp + cc);
+        if (changed) devices_dirty_ = true;
+    }
+
+    void close_slot(int s) {
+        ok_[s] = false;
+        if (dev_[s]) { ma_device_uninit(dev_[s].get()); dev_[s].reset(); }
+    }
+
     void close_all() {
         for (int s = 0; s < kSlots; ++s) if (dev_[s]) { ma_device_uninit(dev_[s].get()); dev_[s].reset(); }
         master_ = -1;
+    }
+
+    // Открывает устройство слота. При неудаче дописывает причину в err и назначает следующую попытку сторожу.
+    void open_slot(int s, bool is_master, std::string& err) {
+        ma_device_type type = s < 2 ? ma_device_type_capture : ma_device_type_playback;
+        const ma_device_id* id = find_id(s, names_[s]);
+        for (int attempt = 0; attempt < 2; ++attempt) {
+            ma_device_config cfg = ma_device_config_init(type);
+            cfg.sampleRate = 48000;
+            cfg.periodSizeInFrames = is_master ? 128 : 256;
+            cfg.periods = 2;
+            cfg.performanceProfile = (is_master && attempt == 0) ? ma_performance_profile_low_latency : ma_performance_profile_conservative;
+            cfg.noPreSilencedOutputBuffer = MA_TRUE;
+            cfg.dataCallback = is_master ? &Mixer::cb_master : (s < 2 ? &Mixer::cb_capture : &Mixer::cb_bus);
+            cfg.pUserData = &roles_[s];
+            if (type == ma_device_type_capture) {
+                cfg.capture.pDeviceID = id; cfg.capture.format = ma_format_f32; cfg.capture.channels = 2;
+            } else {
+                cfg.playback.pDeviceID = id; cfg.playback.format = ma_format_f32; cfg.playback.channels = 2;
+            }
+            auto d = std::make_unique<ma_device>();
+            if (ma_device_init(ctx_, &cfg, d.get()) != MA_SUCCESS) continue;
+            if (ma_device_start(d.get()) != MA_SUCCESS) { ma_device_uninit(d.get()); continue; }
+            if (is_master) {
+                latency_ms_ = d->playback.internalPeriodSizeInFrames * d->playback.internalPeriods * 1000.0 /
+                              (d->playback.internalSampleRate ? d->playback.internalSampleRate : 48000);
+            }
+            dev_[s] = std::move(d);
+            ok_[s] = true;
+            fails_[s] = 0;
+            miss_[s] = 0;
+            return;
+        }
+        err += std::string("не открылось устройство ") + kSlotNames[s] + ": " + names_[s] + "; ";
+        fails_[s] = std::min(fails_[s] + 1, 15);
+        retry_at_[s] = std::chrono::steady_clock::now() + std::chrono::seconds(std::min(30, 2 * fails_[s]));
     }
 
     const ma_device_id* find_id(int slot, const std::string& name) {
@@ -332,7 +457,9 @@ private:
         std::string err;
         for (int i = 0; i < kStrips; ++i) strips[i].ring.init(8192);
         for (int k = 0; k < kBuses; ++k) buses[k].ring.init(8192);
-        for (int s = 0; s < kSlots; ++s) ok_[s] = false;
+        for (int s = 0; s < kSlots; ++s) { ok_[s] = false; fails_[s] = 0; miss_[s] = 0; retry_at_[s] = {}; }
+        rebuild_fails_ = 0;
+        rebuild_at_ = {};
         for (int i = 0; i < kMics; ++i) mic[i].reset();   // звук остановлен: потоки закрыты в close_all()
 
         // Ведущее устройство: первая выходная шина, у которой есть устройство. Оно задаёт такт всей обработке.
@@ -340,36 +467,7 @@ private:
         for (int s = 0; s < kSlots; ++s) usable[s] = !names_[s].empty() && find_id(s, names_[s]);
         for (int s = 2; s < kSlots && master_ < 0; ++s) if (usable[s]) master_ = s - 2;
 
-        auto open = [&](int s, bool is_master) {
-            ma_device_type type = s < 2 ? ma_device_type_capture : ma_device_type_playback;
-            const ma_device_id* id = find_id(s, names_[s]);
-            for (int attempt = 0; attempt < 2; ++attempt) {
-                ma_device_config cfg = ma_device_config_init(type);
-                cfg.sampleRate = 48000;
-                cfg.periodSizeInFrames = is_master ? 128 : 256;
-                cfg.periods = 2;
-                cfg.performanceProfile = (is_master && attempt == 0) ? ma_performance_profile_low_latency : ma_performance_profile_conservative;
-                cfg.noPreSilencedOutputBuffer = MA_TRUE;
-                cfg.dataCallback = is_master ? &Mixer::cb_master : (s < 2 ? &Mixer::cb_capture : &Mixer::cb_bus);
-                cfg.pUserData = &roles_[s];
-                if (type == ma_device_type_capture) {
-                    cfg.capture.pDeviceID = id; cfg.capture.format = ma_format_f32; cfg.capture.channels = 2;
-                } else {
-                    cfg.playback.pDeviceID = id; cfg.playback.format = ma_format_f32; cfg.playback.channels = 2;
-                }
-                auto d = std::make_unique<ma_device>();
-                if (ma_device_init(ctx_, &cfg, d.get()) != MA_SUCCESS) continue;
-                if (ma_device_start(d.get()) != MA_SUCCESS) { ma_device_uninit(d.get()); continue; }
-                if (is_master) {
-                    latency_ms_ = d->playback.internalPeriodSizeInFrames * d->playback.internalPeriods * 1000.0 /
-                                  (d->playback.internalSampleRate ? d->playback.internalSampleRate : 48000);
-                }
-                dev_[s] = std::move(d);
-                ok_[s] = true;
-                return;
-            }
-            err += std::string("не открылось устройство ") + kSlotNames[s] + ": " + names_[s] + "; ";
-        };
+        auto open = [&](int s, bool is_master) { open_slot(s, is_master, err); };
 
         if (master_ >= 0) open(2 + master_, true);
         if (master_ >= 0 && !ok_[2 + master_]) {  // ведущее не открылось: пробуем следующее
@@ -506,6 +604,17 @@ inline int run_server(ma_context& ctx) {
         }
     });
 
+    // Сторож устройств: раз в ~2 секунды проверяет, что назначенные устройства живы, и возвращает вернувшиеся.
+    std::thread guard([&] {
+        while (!quit) {
+            for (int i = 0; i < 20 && !quit; ++i) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            if (quit) break;
+            std::string err = mixer.watchdog();
+            if (!err.empty()) emit_err(err);
+            if (mixer.take_devices_dirty()) emit(mixer.devices_json());
+        }
+    });
+
     std::string line;
     while (std::getline(std::cin, line)) {
         while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) line.pop_back();
@@ -518,6 +627,7 @@ inline int run_server(ma_context& ctx) {
     }
     quit = true;  // окно закрылось или прислало quit
     pump.join();
+    guard.join();
     return 0;
 }
 

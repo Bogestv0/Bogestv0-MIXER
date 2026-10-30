@@ -170,15 +170,17 @@
   }
 
   let toastTimer = null;
-  function toast(msg) {
+  function toast(msg, info) {
     let t = document.getElementById('toast');
     if (!t) {
       t = document.createElement('div');
       t.id = 'toast';
       t.setAttribute('role', 'status');
-      t.style.cssText = 'position:fixed;right:20px;bottom:20px;max-width:420px;padding:12px 16px;border-radius:14px;background:var(--bad);color:#fff;font:500 14px/1.4 Onest,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.3);z-index:60';
       document.body.append(t);
     }
+    // Ошибка красная, обычное сообщение нейтральное.
+    t.style.cssText = 'position:fixed;right:20px;bottom:20px;max-width:420px;padding:12px 16px;border-radius:14px;font:500 14px/1.4 Onest,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.3);z-index:60;' +
+      (info ? 'background:var(--surface);color:var(--fg);border:1px solid var(--line)' : 'background:var(--bad);color:#fff');
     t.textContent = msg;
     t.hidden = false;
     clearTimeout(toastTimer);
@@ -189,6 +191,7 @@
     window.Bridge.on((type) => {
       if (type === 'state' || type === 'conn') paintEngine();
       if (type === 'err' && window.Bridge.lastError) toast(window.Bridge.lastError);
+      if (type === 'notice' && window.Bridge.lastNotice) toast(window.Bridge.lastNotice, true);
     });
     document.addEventListener('dc-rendered', paintEngine);
     paintEngine();
