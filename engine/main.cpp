@@ -65,7 +65,8 @@ static void usage() {
         "  --rate Гц      44100 или 48000 (по умолчанию 48000)\n"
         "  --exclusive    эксклюзивный режим микрофона (меньше задержка)\n"
         "  --exclusive-out эксклюзивный режим выхода (сильно меньше задержка, закройте Voicemeeter)\n"
-        "  --selftest     проверка обработки без звуковых устройств\n\n"
+        "  --selftest     проверка обработки без звуковых устройств\n"
+        "  --fake-driver [секунд]  имитация драйвера (этап 6): тон в Input 2, слушает Output 1; запускать при работающем микшере\n\n"
         "Клавиши: + / - усиление, q выход.\n", VERSION);
 }
 
@@ -197,7 +198,7 @@ static int selftest_devices() {
     ma_context_config cc = ma_context_config_init();
     if (ma_context_init(nb, 1, &cc, &ctx) != MA_SUCCESS) { std::printf("пропущено: нулевой звуковой бэкенд недоступен\n"); return 0; }
     {
-        bg::Mixer m(&ctx);
+        bg::Mixer m(&ctx, nullptr);   // без общей памяти: она проверяется отдельно
         // Фейдеры и Mute шин: границы и ошибки.
         check(m.command("set bus 0 gain -6").empty() && std::fabs(m.buses[0].gain_db.load() + 6.0f) < 1e-6f, "шина: фейдер ставится");
         m.command("set bus 1 gain 99");
@@ -242,6 +243,219 @@ static int selftest_devices() {
     return bad;
 }
 
+// ---------- проверка общей памяти и обмена с драйвером (этап 6.1) ----------
+// Без драйвера: «драйвер» в тестах это второе отображение той же памяти и поток, который пишет и читает кольца.
+static int selftest_shm() {
+    int bad = 0;
+    auto check = [&](bool ok, const char* what) { std::printf("%s %s\n", ok ? "ok    " : "ОШИБКА", what); if (!ok) ++bad; };
+    const std::string nm = "Bogestv0MixerTest" + std::to_string(static_cast<unsigned long>(std::chrono::steady_clock::now().time_since_epoch().count() % 1000000007ull));
+    std::string err;
+    {
+        auto eng = bg::Shm::open(nm, bg::Shm::Role::Engine, err);
+        check(eng != nullptr, "общая память создаётся");
+        if (eng) std::printf("      (%s)\n", eng->where().c_str()); else std::printf("      %s\n", err.c_str());
+        if (!eng) return bad + 1;
+        check(bg::Shm::open(nm + "Нет", bg::Shm::Role::Peer, err) == nullptr, "драйвер без движка память не открывает");
+        auto drv = bg::Shm::open(nm, bg::Shm::Role::Peer, err);
+        check(drv != nullptr, "драйвер открывает готовую память");
+        if (!drv) return bad + 1;
+        const bg::ShmHeader* h = drv->header();
+        check(h->rate == 48000 && h->channels == 2 && h->in_rings == 6 && h->out_rings == 2 && h->ring_frames == bg::kShmRingFrames,
+              "заголовок: 48 кГц, 2 канала, 6 входов и 2 выхода");
+        check(sizeof(bg::ShmHeader) == 256 && sizeof(bg::ShmRingCtl) == 128, "размеры заголовка и управляющего блока зафиксированы");
+
+        // --- кольцо: порядок, нехватка, переполнение, переход через границу uint32 ---
+        bg::ShmRing e = eng->in(1), d = drv->in(1);   // одно и то же кольцо с двух сторон
+        std::vector<float> a(2000 * 2), o(2000 * 2, 9.0f);
+        for (size_t i = 0; i < a.size(); ++i) a[i] = static_cast<float>(i) * 0.001f;
+        check(d.push(a.data(), 100) == 100 && e.available() == 100, "кольцо: записали 100 кадров");
+        check(e.pop(o.data(), 60) == 60 && std::fabs(o[2 * 59] - a[2 * 59]) < 1e-9f && std::fabs(o[2 * 59 + 1] - a[2 * 59 + 1]) < 1e-9f, "кольцо: кадры идут по порядку, L и R не путаются");
+        check(e.pop(o.data(), 80) == 40 && o[2 * 40] == 0.0f && o[2 * 79 + 1] == 0.0f && e.ctl->starved.load() == 40, "кольцо: нехватка добивается тишиной и считается");
+        std::vector<float> big(9000 * 2, 0.1f);
+        check(d.push(big.data(), 9000) == bg::kShmRingFrames && d.ctl->drops.load() == 9000 - bg::kShmRingFrames, "кольцо: переполнение отбрасывает лишнее и считает");
+        e.discard();
+        check(e.available() == 0, "кольцо: discard() выбрасывает накопленное");
+        e.ctl->write_pos.store(0xFFFFFFF0u); e.ctl->read_pos.store(0xFFFFFFF0u);   // позиции у границы uint32
+        check(d.push(a.data(), 100) == 100 && e.available() == 100, "кольцо: запись через границу uint32");
+        std::fill(o.begin(), o.end(), 0.0f);
+        check(e.pop(o.data(), 100) == 100 && std::fabs(o[2 * 99] - a[2 * 99]) < 1e-9f && std::fabs(o[0] - a[0]) < 1e-9f, "кольцо: чтение через границу uint32");
+        d.push(big.data(), 3000);
+        e.pop(o.data(), 128, 960);
+        check(e.available() == 960 - 128, "кольцо: запас обрезается до заданной задержки (остаётся 960 кадров минус прочитанные)");
+        e.discard();
+        e.ctl->write_pos.store(12345u); e.ctl->read_pos.store(1u);   // испорченные позиции (разность больше кольца)
+        check(e.pop(o.data(), 64) == 0 && e.available() == 0, "кольцо: испорченные позиции не приводят к чтению мусора");
+        e.ctl->write_pos.store(0); e.ctl->read_pos.store(0);
+
+        // --- поток-писатель и поток-читатель: все кадры в порядке, без потерь ---
+        {
+            bg::ShmRing w = eng->in(2), r = drv->in(2);
+            const uint32_t total = 400000;
+            std::atomic<bool> ordered{true};
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+            std::thread prod([&] {
+                uint32_t sent = 0;
+                std::vector<float> blk(256 * 2);
+                while (sent < total && std::chrono::steady_clock::now() < deadline) {   // читатель сдался: не зависаем
+                    const uint32_t n = std::min<uint32_t>(256, total - sent);
+                    if (bg::kShmRingFrames - w.available() < n) { std::this_thread::yield(); continue; }   // нет места: ждём, блок целиком
+                    for (uint32_t i = 0; i < n; ++i) { blk[i * 2] = static_cast<float>(sent + i); blk[i * 2 + 1] = -static_cast<float>(sent + i); }
+                    sent += w.push(blk.data(), n);
+                }
+            });
+            uint32_t got = 0;
+            std::vector<float> blk(300 * 2);
+            const auto t0 = std::chrono::steady_clock::now();
+            while (got < total && std::chrono::steady_clock::now() - t0 < std::chrono::seconds(50)) {
+                const uint32_t m = r.pop(blk.data(), 300);
+                for (uint32_t i = 0; i < m; ++i)
+                    if (blk[i * 2] != static_cast<float>(got + i) || blk[i * 2 + 1] != -static_cast<float>(got + i)) ordered = false;
+                got += m;
+                if (!m) std::this_thread::yield();
+            }
+            prod.join();
+            check(got == total && ordered.load(), "два потока: 400000 кадров дошли по порядку без потерь");
+        }
+
+        // --- второй движок, повторный запуск ---
+        eng->header()->engine_beat.store(0);
+        std::atomic<bool> beating{true};
+        std::thread beat([&] { while (beating) { eng->header()->engine_beat.fetch_add(1); std::this_thread::sleep_for(std::chrono::milliseconds(5)); } });
+        std::string err2;
+        auto second = bg::Shm::open(nm, bg::Shm::Role::Engine, err2);
+        beating = false; beat.join();
+        check(second == nullptr && !err2.empty(), "второй движок при работающем первом получает отказ");
+        eng->in(3).ctl->write_pos.store(500);   // накопилось, пока движок не читал
+        eng.reset();                             // движок закрылся: драйвер держит память
+        check(drv->header()->engine_pid == 0, "после закрытия движка engine_pid = 0");
+        auto again = bg::Shm::open(nm, bg::Shm::Role::Engine, err2);
+        check(again != nullptr && again->header()->engine_pid != 0 && again->in(3).available() == 0,
+              "перезапуск движка: память и заголовок на месте, старый звук входов выброшен");
+    }
+    bg::Shm::unlink_name(nm);
+    return bad;
+}
+
+// Движок целиком на «нулевом» звуковом устройстве и «драйвер» в потоке: V2 из драйвера идёт на B1 и обратно к драйверу.
+static int selftest_driver_mixer() {
+    int bad = 0;
+    auto check = [&](bool ok, const char* what) { std::printf("%s %s\n", ok ? "ok    " : "ОШИБКА", what); if (!ok) ++bad; };
+    ma_backend nb[] = {ma_backend_null};
+    ma_context ctx;
+    ma_context_config cc = ma_context_config_init();
+    if (ma_context_init(nb, 1, &cc, &ctx) != MA_SUCCESS) { std::printf("пропущено: нулевой звуковой бэкенд недоступен\n"); return 0; }
+    const std::string nm = "Bogestv0MixerTestM" + std::to_string(static_cast<unsigned long>(std::chrono::steady_clock::now().time_since_epoch().count() % 1000000007ull));
+    {
+        bg::Mixer m(&ctx, nm.c_str());
+        std::string dev = m.debug_name(false);
+        if (!m.shm_ready() || dev.empty()) { std::printf("пропущено: нет общей памяти или устройств-пустышек\n"); }
+        else {
+            std::string err;
+            auto drv = bg::Shm::open(nm, bg::Shm::Role::Peer, err);
+            check(drv != nullptr, "драйвер подключился к памяти движка");
+            check(m.command("set dev a1 " + dev).empty() && m.slot_ok(2), "ведущее устройство A1 открылось");
+            m.command("set strip 3 route 3 1");   // V2 («Музыка») -> B1
+            check(m.state_json().find("\"drv\":{\"shm\":1,\"alive\":0,\"in\":[0,0,0,0,0,0],\"out\":[0,0]}") != std::string::npos, "состояние: драйвера пока нет");
+
+            // «Драйвер»: открывает Input 2 и Output 1, пишет постоянный сигнал в Input 2 и читает Output 1.
+            bg::ShmRing in2 = drv->in(1), out1 = drv->out(0);
+            out1.discard(); out1.set_active(true);
+            std::atomic<bool> stop{false};
+            std::thread th([&] {
+                std::vector<float> blk(480 * 2);
+                for (uint32_t i = 0; i < 480; ++i) { blk[i * 2] = 0.5f; blk[i * 2 + 1] = -0.25f; }
+                in2.set_active(true);
+                while (!stop) {
+                    in2.push(blk.data(), 480);
+                    drv->header()->driver_beat.fetch_add(1, std::memory_order_relaxed);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                }
+            });
+            bool heard = false;
+            std::vector<float> o(480 * 2);
+            for (int i = 0; i < 100 && !heard; ++i) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                const uint32_t got = out1.pop(o.data(), 480);
+                for (uint32_t f = 0; f < got; ++f) if (std::fabs(o[f * 2] - 0.5f) < 1e-3f && std::fabs(o[f * 2 + 1] + 0.25f) < 1e-3f) heard = true;
+            }
+            check(heard, "звук из Input 2 драйвера пришёл на B1 и вернулся в Output 1 (L=0.5, R=-0.25)");
+            check(drv->header()->engine_beat.load() > 0, "движок считает блоки: engine_beat растёт");
+            m.poll_driver();
+            std::this_thread::sleep_for(std::chrono::milliseconds(40));   // драйвер успевает сделать такт между опросами
+            m.poll_driver();
+            check(m.driver_alive() && m.state_json().find("\"in\":[0,1,0,0,0,0],\"out\":[1,0]") != std::string::npos, "состояние: драйвер жив, открыты Input 2 и Output 1");
+
+            // Тест-источник важнее драйвера: пока он включён, звук из драйвера не берётся.
+            m.command("set strip 3 src sine");
+            m.command("set strip 3 gain 0");
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            out1.discard();
+            std::this_thread::sleep_for(std::chrono::milliseconds(150));
+            // Синус одинаков в L и R, а звук драйвера нет (L=0.5, R=-0.25): если драйвер просочился, разница заметна.
+            bool only_sine = true, any = false;
+            for (uint32_t got = out1.pop(o.data(), 480), f = 0; f < got; ++f) { any = true; if (std::fabs(o[f * 2] - o[f * 2 + 1]) > 1e-4f) only_sine = false; }
+            check(any && only_sine, "тест-источник на дорожке заглушает звук драйвера");
+            m.command("set strip 3 src off");
+
+            // Драйвер закрыл поток: дорожка замолкает, движок в Output 1 больше не пишет.
+            in2.set_active(false);
+            out1.set_active(false);
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            const uint32_t w_before = out1.ctl->write_pos.load();
+            std::this_thread::sleep_for(std::chrono::milliseconds(150));
+            check(out1.ctl->write_pos.load() == w_before, "пока Output 1 не открыт драйвером, движок в него не пишет");
+            stop = true;
+            th.join();
+
+            // Драйвер пропал (счётчик стоит): через проверку сторожа он «не жив».
+            m.poll_driver();
+            m.poll_driver();
+            check(!m.driver_alive(), "счётчик драйвера стоит: драйвер считается пропавшим");
+            m.command("set dev a1 -");
+        }
+    }
+    ma_context_uninit(&ctx);
+    bg::Shm::unlink_name(nm);
+    return bad;
+}
+
+// Имитация драйвера для проверки на Windows без самого драйвера: `engine.exe --fake-driver [секунд]`.
+// Запускать, пока работает микшер (окно или `--serve`). Играет тон 440 Гц в «Bogestv0 Input 2» и слушает «Bogestv0 Output 1».
+static int fake_driver(int seconds) {
+    std::string err;
+    auto shm = bg::Shm::open(bg::kShmDefaultName, bg::Shm::Role::Peer, err);
+    if (!shm) { std::fprintf(stderr, "%s. Сначала запустите микшер (окно программы).\n", err.c_str()); return 1; }
+    std::printf("Имитация драйвера подключена (%s). %d с.\n", shm->where().c_str(), seconds);
+    std::printf("Input 2 (дорожка «Музыка») получает тон 440 Гц; B1 слушаем в Output 1.\n");
+    std::printf("Чтобы услышать тон: на «Микшере» у «Музыка» выключите тест-источник и включите маршрут на A1 или A2.\n\n");
+    bg::ShmRing in2 = shm->in(1), out1 = shm->out(0);
+    out1.discard(); out1.set_active(true); in2.set_active(true);
+    double phase = 0.0;
+    std::vector<float> blk(480 * 2), rd(480 * 2);
+    float peak = 0.0f;
+    auto next = std::chrono::steady_clock::now();
+    for (int tick = 0; tick < seconds * 100; ++tick) {
+        for (int i = 0; i < 480; ++i) {
+            blk[i * 2] = blk[i * 2 + 1] = static_cast<float>(std::sin(phase)) * 0.3f;
+            phase += 2.0 * 3.14159265358979 * 440.0 / 48000.0;
+            if (phase > 6.283185307179586) phase -= 6.283185307179586;
+        }
+        in2.push(blk.data(), 480);
+        shm->header()->driver_beat.fetch_add(1, std::memory_order_relaxed);
+        const uint32_t got = out1.pop(rd.data(), 480);
+        for (uint32_t i = 0; i < got * 2; ++i) peak = std::max(peak, std::fabs(rd[i]));
+        if (tick % 100 == 99) {
+            std::printf("engine_beat %u | из B1 пришло, пик %.1f дБ | потеряно кадров: вход %u, выход %u\n", shm->header()->engine_beat.load(),
+                        bg::lin_to_db(peak), in2.ctl->drops.load(), out1.ctl->starved.load());
+            peak = 0.0f;
+        }
+        next += std::chrono::milliseconds(10);
+        std::this_thread::sleep_until(next);
+    }
+    in2.set_active(false); out1.set_active(false);
+    return 0;
+}
+
 static int selftest() {
     int bad = 0;
     auto check = [&](bool ok, const char* what) { std::printf("%s %s\n", ok ? "ok    " : "ОШИБКА", what); if (!ok) ++bad; };
@@ -268,6 +482,8 @@ static int selftest() {
     check(std::fabs(v - 0.75f) < 1e-6f && std::fabs(m.peak[0].load() - 0.6f) < 1e-6f, "метр: плавный спад");
     bad += selftest_mic();
     bad += selftest_devices();
+    bad += selftest_shm();
+    bad += selftest_driver_mixer();
     std::printf(bad ? "\nЕсть ошибки: %d\n" : "\nВсе проверки пройдены.\n", bad);
     return bad ? 1 : 0;
 }
@@ -315,6 +531,7 @@ int main(int argc, char** argv) {
         else if (a == "--exclusive") exclusive = true;
         else if (a == "--exclusive-out") exclusive_out = true;
         else if (a == "--selftest") return selftest();
+        else if (a == "--fake-driver") return fake_driver(i + 1 < argc && std::atoi(argv[i + 1]) > 0 ? std::atoi(argv[i + 1]) : 15);
         else { usage(); return a == "--help" || a == "-h" ? 0 : 2; }
     }
     if (!list && !serve && (in_idx < 0 || out_idx < 0)) { usage(); return 2; }

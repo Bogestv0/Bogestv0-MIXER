@@ -12,6 +12,8 @@
 //                | ns 0..3 (выкл / мягкое / сильное / максимум) | nsamt 0..100    (I = 0 или 1, микрофон)
 //   set dev СЛОТ ИМЯ_УСТРОЙСТВА   (пустое имя или "-" отключает слот)
 // Ответы: строки JSON (hello, devices, state, m, err).
+// Драйвер (этап 6.1): если в общей памяти (shm.h) драйвер держит поток на «Bogestv0 Input N», дорожка V(N) берёт звук оттуда
+// (когда её тест-источник выключен). Шины B1 и B2 дополнительно пишутся в «Bogestv0 Output 1/2», пока драйвер открыл поток.
 // Устройства (этап 5): сторож раз в ~2 секунды проверяет назначенные устройства. Выдернули наушники, и слот освободился;
 // вставили, и он открылся сам, а остальной звук не прерывается. Если пропало ведущее устройство (первая рабочая шина A/B),
 // тракт собирается заново.
@@ -19,6 +21,7 @@
 
 #include "dsp.h"
 #include "mic.h"
+#include "shm.h"
 #include "third_party/miniaudio.h"
 
 #include <array>
@@ -134,7 +137,15 @@ public:
     MicChain mic[kMics];
     std::atomic<bool> dirty{true};
 
-    explicit Mixer(ma_context* c) : ctx_(c) {
+    // shm_name = nullptr отключает общую память (для проверок).
+    explicit Mixer(ma_context* c, const char* shm_name = kShmDefaultName) : ctx_(c) {
+        if (shm_name) {
+            shm_ = Shm::open(shm_name, Shm::Role::Engine, shm_err_);
+            if (shm_) {
+                for (int i = 0; i < kShmInRings; ++i) shm_in_[i] = shm_->in(i);
+                for (int i = 0; i < kShmOutRings; ++i) shm_out_[i] = shm_->out(i);
+            }
+        }
         for (int i = 0; i < kStrips; ++i) { strips[i].hw = i < 2; strips[i].ring.init(8192); }
         for (int k = 0; k < kBuses; ++k) buses[k].ring.init(8192);
         for (int s = 0; s < kSlots; ++s) { roles_[s] = {this, s}; ok_[s] = false; }
@@ -189,6 +200,7 @@ public:
     std::string watchdog() {
         using clock = std::chrono::steady_clock;
         std::lock_guard<std::mutex> lk(dev_mu_);
+        poll_driver();
         refresh_locked();
         const auto now = clock::now();
         bool changed = false, master_lost = false;
@@ -234,6 +246,25 @@ public:
         return err;
     }
 
+    // ---------- драйвер (общая память) ----------
+    bool shm_ready() const { return shm_ != nullptr; }
+    const std::string& shm_error() const { return shm_err_; }
+    bool driver_alive() const { return drv_alive_.load(); }
+    Shm* shm() const { return shm_.get(); }
+
+    // Сторож: драйвер жив, если его счётчик сдвинулся с прошлой проверки. Меняется набор открытых потоков: окно получит новое состояние.
+    void poll_driver() {
+        if (!shm_) return;
+        const uint32_t beat = shm_->header()->driver_beat.load(std::memory_order_relaxed);
+        const bool alive = beat != last_driver_beat_;
+        last_driver_beat_ = beat;
+        drv_alive_ = alive;
+        unsigned mask = alive ? 1u : 0u;
+        for (int i = 0; i < kShmInRings; ++i) if (shm_in_[i].active()) mask |= 2u << i;
+        for (int i = 0; i < kShmOutRings; ++i) if (shm_out_[i].active()) mask |= 2u << (kShmInRings + i);
+        if (mask != drv_mask_.exchange(mask)) dirty = true;
+    }
+
     // Для самопроверки без звуковых устройств.
     bool slot_ok(int s) const { return ok_[s]; }
     const void* debug_dev(int s) const { return dev_[s].get(); }
@@ -270,7 +301,12 @@ public:
         for (int s = 0; s < kSlots; ++s) o << (s ? "," : "") << "\"" << kSlotNames[s] << "\":\"" << json_escape(names_[s]) << "\"";
         o << "},\"ok\":{";
         for (int s = 0; s < kSlots; ++s) o << (s ? "," : "") << "\"" << kSlotNames[s] << "\":" << (ok_[s] ? 1 : 0);
-        o << "}}";
+        o << "},\"drv\":{\"shm\":" << (shm_ ? 1 : 0) << ",\"alive\":" << (drv_alive_.load() ? 1 : 0) << ",\"in\":[";
+        const unsigned mk = drv_mask_.load();
+        for (int i = 0; i < kShmInRings; ++i) o << (i ? "," : "") << ((mk >> (1 + i)) & 1u);
+        o << "],\"out\":[";
+        for (int i = 0; i < kShmOutRings; ++i) o << (i ? "," : "") << ((mk >> (1 + kShmInRings + i)) & 1u);
+        o << "]}}";
         return o.str();
     }
 
@@ -371,6 +407,13 @@ private:
     int fails_[kSlots] = {}, miss_[kSlots] = {}, rebuild_fails_ = 0;
     std::vector<std::vector<float>> acc_;
     std::vector<float> tmp_;
+    std::unique_ptr<Shm> shm_;
+    std::string shm_err_;
+    ShmRing shm_in_[kShmInRings], shm_out_[kShmOutRings];
+    bool drv_was_active_[kShmInRings] = {};        // только аудио-поток
+    uint32_t last_driver_beat_ = 0;                // только сторож
+    std::atomic<bool> drv_alive_{false};
+    std::atomic<unsigned> drv_mask_{0};            // бит 0: драйвер жив; 1..6: входы V1..V6; 7..8: выходы B1, B2
 
     std::string load_file(Strip& s, const std::string& path) {
         ma_decoder_config dc = ma_decoder_config_init(ma_format_f32, 2, 48000);
@@ -549,7 +592,14 @@ private:
                 if (s.hw) {
                     s.ring.pop(t, n);
                     if (i < kMics && ok_[i]) mic[i].process(t, n);   // обработка микрофона
-                } else generate(s, i, t, n);
+                } else if (shm_ && s.src.load(std::memory_order_relaxed) == SRC_OFF && shm_in_[i - 2].active()) {
+                    ShmRing& rg = shm_in_[i - 2];
+                    if (!drv_was_active_[i - 2]) { rg.discard(); drv_was_active_[i - 2] = true; }   // поток только что открылся: старое не нужно
+                    rg.pop(t, static_cast<uint32_t>(n), static_cast<uint32_t>(std::max<size_t>(n * 3, 960)));
+                } else {
+                    if (i >= 2) drv_was_active_[i - 2] = false;
+                    generate(s, i, t, n);
+                }
                 const bool silent = s.mute.load(std::memory_order_relaxed) || (any_solo && !s.solo.load(std::memory_order_relaxed));
                 const float target = silent ? 0.0f : gain_from_db(s.gain_db.load(std::memory_order_relaxed));
                 ramp(t, n, s.cur_gain, target);
@@ -572,7 +622,10 @@ private:
                 b.meter.feed(a, n, 2);
                 if (k == master_bus) std::memcpy(out + done * 2, a, n * 2 * sizeof(float));
                 else if (ok_[2 + k]) b.ring.push(a, n);
+                if (shm_ && k >= kBuses - kShmOutRings && shm_out_[k - (kBuses - kShmOutRings)].active())
+                    shm_out_[k - (kBuses - kShmOutRings)].push(a, static_cast<uint32_t>(n));   // B1 / B2 -> «Bogestv0 Output 1/2»
             }
+            if (shm_) shm_->header()->engine_beat.fetch_add(1, std::memory_order_relaxed);
             done += n;
         }
     }
@@ -594,6 +647,7 @@ inline int run_server(ma_context& ctx) {
     emit(std::string("{\"t\":\"hello\",\"v\":\"") + kEngineVersion + "\"}");
     emit(mixer.devices_json());
     emit(mixer.state_json());
+    if (!mixer.shm_ready()) emit_err("общая память драйвера недоступна: " + mixer.shm_error() + " (виртуальные устройства работать не будут)");
 
     // Метры ~30 раз в секунду, состояние — когда что-то изменилось.
     std::thread pump([&] {
