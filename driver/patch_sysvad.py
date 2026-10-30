@@ -13,6 +13,7 @@ SPDIF-пары: те же таблицы, но свои имена подуст�
 («Output 1», «Output 2»), массивы 2 и 3 убираются из списка устройств.
 """
 import pathlib
+import re
 import sys
 
 # Консоль Windows на сборочной машине в cp1252 и не печатает русский текст: принудительно UTF-8.
@@ -252,13 +253,18 @@ def patch_inx_devices(root: pathlib.Path) -> int:
 
     # Видимые имена (после 6.2a строка SPDIF уже называется «Bogestv0 Input 4 Topology»).
     t = 'SYSVAD.TopologySpdif.szPname="Bogestv0 Input 4 Topology"\n'
-    if 'SYSVAD.WaveInput5.szPname' not in text:
+    if 'SYSVAD.WaveInput5.szPname="' not in text:
         if text.count(t) == 1:
             add = "".join(f'SYSVAD.WaveInput{n}.szPname="Bogestv0 Input {n}"\nSYSVAD.TopologyInput{n}.szPname="Bogestv0 Input {n} Topology"\n'
                           for n in EXTRA_INPUTS)
             text = text.replace(t, t + add)
         else:
             errors.append("INF: нет строки SPDIF после переименования (6.2a должна пройти раньше)")
+
+    # Самопроверка: каждый %токен% вида SYSVAD.*.szPname / KSNAME_* обязан быть определён в [Strings].
+    for tok in sorted(set(re.findall(r"%((?:SYSVAD\.\w+\.szPname)|(?:KSNAME_\w+))%", text))):
+        if not re.search(r"^" + re.escape(tok) + r"\s*=", text, re.M):
+            errors.append(f"INF: строка {tok} не определена в [Strings]")
 
     if errors:
         for e in errors:
