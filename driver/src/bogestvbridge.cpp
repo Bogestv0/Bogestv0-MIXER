@@ -12,6 +12,7 @@
 //
 // Раскладку нужно держать в точном соответствии с engine/shm.h (размеры проверяются C_ASSERT).
 #include "sysvad.h"
+#include <ntifs.h>                        // KAPC_STATE, KeStackAttachProcess, KeUnstackDetachProcess
 #include <wdmsec.h>
 #include "bogestvbridge.h"
 #include "bogestv_ioctl.h"
