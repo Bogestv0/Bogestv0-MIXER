@@ -284,13 +284,21 @@ class Component extends DCLogic {
       const lines = [];
       for (let i = 0; i < 14; i++) {
         const rate = dg.rate && dg.rate[i];
-        if (!rate) continue;
-        let s = names[i] + ': Windows ' + rate + ' Гц' + (rate !== 48000 ? ' (не 48 000: будет другая высота и треск)' : '');
+        const seen = i < 6 && ((dg.opens && dg.opens[i]) || (dg.closes && dg.closes[i]));   // поток уже открывался: строку держим и после закрытия
+        if (!rate && !seen) continue;
+        let s = names[i] + ': ' + (rate ? 'Windows ' + rate + ' Гц' + (rate !== 48000 ? ' (не 48 000: будет другая высота и треск)' : '') : 'сейчас закрыт');
         s += ', нехватка звука ' + ms(dg.starved && dg.starved[i]) + ', отброшено ' + ms(dg.drops && dg.drops[i]);
-        if (i < 6) s += ', обрезано запаса ' + ms(dg.trim && dg.trim[i]);
+        if (i < 6) {
+          s += ', выброшено сверху ' + ms(dg.trim && dg.trim[i]);
+          // Запас на входе: цель 25 мс. «Подстройка» = на сколько движок подгоняет скорость чтения под часы драйвера.
+          const adj = ((dg.adj && dg.adj[i]) || 0) / 10000;
+          s += '\n    запас ' + ms(dg.fill && dg.fill[i]) + ' (цель 25 мс), подстройка ' + (adj > 0 ? '+' : '') + adj.toFixed(2) + ' %'
+            + ', опустошений ' + ((dg.under && dg.under[i]) || 0)
+            + ', поток открыт ' + ((dg.opens && dg.opens[i]) || 0) + ' раз, закрыт ' + ((dg.closes && dg.closes[i]) || 0);
+        }
         lines.push(s);
       }
-      if (lines.length) diagText = 'Диагностика (с запуска движка; растёт во время хрипа):\n' + lines.join('\n');
+      if (lines.length) diagText = 'Диагностика (с запуска движка; смотрите, какое число растёт во время хрипа):\n' + lines.join('\n');
     }
     const used = Object.keys(dev).filter((k) => dev[k]).length;
     return { devices, slots, virtuals, drvText, drvPill, virtualsNote, diagText, foundCount: list.length, usedCount: used, refresh: () => B.send('devices') };

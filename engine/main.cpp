@@ -243,6 +243,143 @@ static int selftest_devices() {
     return bad;
 }
 
+// ---------- чтение входа драйвера с запасом (этап 6.6, этап A) ----------
+// Без звуковых устройств и без реального времени: часы считаются виртуальные. «Драйвер» присылает порции по 480 кадров
+// с дрожанием и своей частотой часов, «движок» забирает блоки по 128 кадров. На входе синус 440 Гц: по выходу видно
+// провалы (тишина посреди звука) и щелчки (скачок больше, чем даёт синус).
+struct InSim {
+    double clock = 1.0;        // часы драйвера относительно движка (1.001 = на 0,1 % быстрее)
+    double jitter_ms = 8.0;    // опоздание порции от 0 до этого значения
+    double secs = 60.0;
+    double stall_at = -1.0, stall_len = 0.0;   // драйвер замолчал, потом выдал накопленное разом
+    uint32_t block = 128;
+    bool legacy = false;       // читать старым способом (pop без запаса) для сравнения
+};
+struct InSimRes {
+    uint32_t gaps = 0, clicks = 0, under = 0, trim = 0;
+    double fill_min = 1e9, fill_max = 0, fill_end = 0;
+    int32_t adj_end = 0;
+};
+static InSimRes run_in_sim(bg::Shm& shm, const InSim& c) {
+    bg::ShmRing rg = shm.in(0);
+    rg.discard();
+    rg.ctl->starved.store(0);
+    bg::InReader rd;
+    rd.open(rg);
+    InSimRes res;
+    std::vector<float> src(480 * 2), out(c.block * 2);
+    uint32_t seed = 12345;
+    auto rnd = [&]() { seed ^= seed << 13; seed ^= seed >> 17; seed ^= seed << 5; return (seed & 0xFFFFFF) / 16777216.0; };
+    const double period = 480.0 / (48000.0 * c.clock);
+    uint64_t sent = 0;                  // сколько кадров синуса отдано в кольцо
+    double next_at = 0.0, prev_at = 0.0;
+    auto arrival = [&](int k) {
+        double t = k * period + (k == 0 ? 0.0 : rnd() * c.jitter_ms * 1e-3);   // первая порция вовремя: самый невыгодный момент начала
+        if (c.stall_at >= 0 && t >= c.stall_at && t < c.stall_at + c.stall_len) t = c.stall_at + c.stall_len;
+        return std::max(t, prev_at);   // порции не обгоняют друг друга
+    };
+    int k = 0;
+    next_at = arrival(k);
+    float prev = 0.0f;
+    uint32_t zero_run = 0;
+    bool started = false;
+    uint64_t blocks = static_cast<uint64_t>(c.secs * 48000.0 / c.block);
+    for (uint64_t b = 0; b < blocks; ++b) {
+        const double te = static_cast<double>(b) * c.block / 48000.0;
+        while (next_at <= te) {
+            for (int i = 0; i < 480; ++i, ++sent) src[i * 2] = src[i * 2 + 1] = 0.5f * static_cast<float>(std::sin(6.283185307179586 * 440.0 * static_cast<double>(sent) / 48000.0));
+            rg.push(src.data(), 480);
+            prev_at = next_at; ++k; next_at = arrival(k);
+        }
+        if (c.legacy) rg.pop(out.data(), c.block, std::max<uint32_t>(c.block * 3, 960));
+        else rd.read(rg, out.data(), c.block);
+        for (uint32_t i = 0; i < c.block; ++i) {
+            const float x = out[i * 2];
+            if (te > 1.0) {
+                if (x == 0.0f) { if (++zero_run == 16) ++res.gaps; } else zero_run = 0;
+                if (started && x != 0.0f && prev != 0.0f && std::fabs(x - prev) > 0.08f) ++res.clicks;
+            }
+            if (x != 0.0f) started = true;
+            prev = x;
+        }
+        if (te > c.secs - 20.0 && !c.legacy) {
+            const double f = rd.fill.load();
+            res.fill_min = std::min(res.fill_min, f); res.fill_max = std::max(res.fill_max, f);
+        }
+    }
+    res.under = rd.under.load(); res.trim = rd.trim.load();
+    res.fill_end = rd.fill.load(); res.adj_end = rd.adj_ppm.load();
+    return res;
+}
+
+static int selftest_inbuf() {
+    int bad = 0;
+    auto check = [&](bool ok, const char* what) { std::printf("%s %s\n", ok ? "ok    " : "ОШИБКА", what); if (!ok) ++bad; };
+    const std::string nm = "Bogestv0MixerTestI" + std::to_string(static_cast<unsigned long>(std::chrono::steady_clock::now().time_since_epoch().count() % 1000000007ull));
+    std::string err;
+    {
+        auto shm = bg::Shm::open(nm, bg::Shm::Role::Engine, err);
+        if (!shm) { std::printf("пропущено: нет общей памяти (%s)\n", err.c_str()); return 0; }
+        const double target = bg::kInTargetFrames;
+
+        InSim a;
+        // Для сравнения: старое чтение (без запаса) на тех же данных. Само по себе дрожание оно переживает (запас накапливается
+        // за счёт первых провалов), а расхождение часов нет: при медленном драйвере кольцо опустошается снова и снова,
+        // при быстром запас растёт, и лишнее приходится выбрасывать.
+        InSim lo = a; lo.clock = 0.999; lo.legacy = true;
+        InSim hi = a; hi.clock = 1.001; hi.legacy = true;
+        InSimRes old_lo = run_in_sim(*shm, lo), old_hi = run_in_sim(*shm, hi);
+        std::printf("      (старое чтение, 60 с: драйвер медленнее на 0,1 %%: провалов %u; быстрее на 0,1 %%: щелчков %u)\n", old_lo.gaps, old_hi.clicks);
+        check(old_lo.gaps > 0, "(проверка самой проверки) старое чтение без запаса при расхождении часов даёт провалы звука");
+
+        InSimRes r = run_in_sim(*shm, a);
+        check(r.gaps == 0 && r.clicks == 0 && r.under == 0 && r.trim == 0, "дрожание порций до 8 мс: ни провалов, ни щелчков, кольцо ни разу не опустело");
+        check(std::fabs(r.fill_min - target) < 250 && std::fabs(r.fill_max - target) < 250, "запас держится у цели 25 мс");
+        std::printf("      (запас %.0f…%.0f кадров, цель %.0f)\n", r.fill_min, r.fill_max, target);
+
+        InSim a2 = a; a2.block = 441; a2.secs = 30;
+        r = run_in_sim(*shm, a2);
+        check(r.gaps == 0 && r.clicks == 0 && r.under == 0, "блок 441 кадр (не кратен порции): тоже чисто");
+
+        InSim f = a; f.clock = 1.001;
+        r = run_in_sim(*shm, f);
+        check(r.gaps == 0 && r.clicks == 0 && r.under == 0 && r.trim == 0, "драйвер быстрее на 0,1 %: чисто, ничего не выброшено");
+        check(std::fabs(r.fill_end - target) < 250 && std::abs(r.adj_end - 1000) < 300, "запас остался у цели, скорость чтения подстроилась на +0,1 %");
+        std::printf("      (запас в конце %.0f, подстройка %d ppm)\n", r.fill_end, r.adj_end);
+
+        InSim s = a; s.clock = 0.999;
+        r = run_in_sim(*shm, s);
+        check(r.gaps == 0 && r.clicks == 0 && r.under == 0, "драйвер медленнее на 0,1 %: чисто, кольцо не опустело");
+        check(std::fabs(r.fill_end - target) < 250 && std::abs(r.adj_end + 1000) < 300, "запас остался у цели, скорость чтения подстроилась на −0,1 %");
+        std::printf("      (запас в конце %.0f, подстройка %d ppm)\n", r.fill_end, r.adj_end);
+
+        InSim t = a; t.stall_at = 10.0; t.stall_len = 0.1;
+        r = run_in_sim(*shm, t);
+        check(r.gaps == 1 && r.under == 1, "драйвер замолчал на 100 мс: одна тишина и один подсчёт, а не хрип на каждой порции");
+        check(r.clicks <= 2 && std::fabs(r.fill_end - target) < 250, "после паузы звук продолжается чисто, запас вернулся к цели");
+        std::printf("      (после паузы выброшено %u кадров, запас в конце %.0f)\n", r.trim, r.fill_end);
+
+        // Открытие потока: старое выбрасывается, звук идёт только после набора запаса; закрытие и открытие считаются.
+        bg::ShmRing rg = shm->in(1);
+        bg::InReader rd;
+        std::vector<float> big(2000 * 2, 0.25f), o(128 * 2, 9.0f);
+        rg.push(big.data(), 2000);
+        rd.open(rg);
+        rd.read(rg, o.data(), 128);
+        check(o[0] == 0.0f && o[255] == 0.0f && rg.available() == 0, "открытие потока: накопленное старое выброшено, пока тишина");
+        rg.push(big.data(), 1000);
+        rd.read(rg, o.data(), 128);
+        check(o[0] == 0.0f && rd.under.load() == 0, "ждёт запас (1000 < 1200), это не считается нехваткой");
+        rg.push(big.data(), 300);
+        rd.read(rg, o.data(), 128);
+        check(std::fabs(o[0] - 0.25f) < 1e-6f && std::fabs(o[255] - 0.25f) < 1e-6f, "запас набрался: звук пошёл");
+        rd.closed(); rd.open(rg);
+        check(rd.opens.load() == 2 && rd.closes.load() == 1, "счётчики открытий и закрытий потока");
+    }
+    bg::Shm::unlink_name(nm);
+    return bad;
+}
+
 // ---------- проверка общей памяти и обмена с драйвером (этап 6.1) ----------
 // Без драйвера: «драйвер» в тестах это второе отображение той же памяти и поток, который пишет и читает кольца.
 static int selftest_shm() {
@@ -355,7 +492,7 @@ static int selftest_driver_mixer() {
             check(drv != nullptr, "драйвер подключился к памяти движка");
             check(m.command("set dev a1 " + dev).empty() && m.slot_ok(2), "ведущее устройство A1 открылось");
             m.command("set strip 3 route 3 1");   // V2 («Музыка») -> B1
-            check(m.state_json().find("\"drv\":{\"shm\":1,\"via\":0,\"found\":0,\"alive\":0,\"in\":[0,0,0,0,0,0],\"out\":[0,0,0,0,0,0,0,0],\"diag\":{\"rate\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"starved\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"drops\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"trim\":[0,0,0,0,0,0]}}") != std::string::npos, "состояние: драйвера пока нет, диагностика колец нулевая");
+            check(m.state_json().find("\"drv\":{\"shm\":1,\"via\":0,\"found\":0,\"alive\":0,\"in\":[0,0,0,0,0,0],\"out\":[0,0,0,0,0,0,0,0],\"diag\":{\"rate\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"starved\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"drops\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"trim\":[0,0,0,0,0,0],\"fill\":[0,0,0,0,0,0],\"under\":[0,0,0,0,0,0],\"adj\":[0,0,0,0,0,0],\"opens\":[0,0,0,0,0,0],\"closes\":[0,0,0,0,0,0]}}") != std::string::npos, "состояние: драйвера пока нет, диагностика колец нулевая");
 
             // «Драйвер»: открывает Input 2 и Output 1, пишет постоянный сигнал в Input 2 и читает Output 1.
             bg::ShmRing in2 = drv->in(1), out1 = drv->out(0);
@@ -408,6 +545,7 @@ static int selftest_driver_mixer() {
             for (uint32_t got = out1.pop(o.data(), 480), f = 0; f < got; ++f) { any = true; if (std::fabs(o[f * 2] - o[f * 2 + 1]) > 1e-4f) only_sine = false; }
             check(any && only_sine, "тест-источник на дорожке заглушает звук драйвера");
             m.command("set strip 3 src off");
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));   // дорожка снова берёт звук драйвера (считается новым открытием)
 
             // Драйвер закрыл поток: дорожка замолкает, движок в Output 1 больше не пишет.
             in2.set_active(false);
@@ -417,6 +555,7 @@ static int selftest_driver_mixer() {
             const uint32_t w_before = out1.ctl->write_pos.load();
             std::this_thread::sleep_for(std::chrono::milliseconds(150));
             check(out1.ctl->write_pos.load() == w_before, "пока Output 1 не открыт драйвером, движок в него не пишет");
+            check(m.state_json().find("\"opens\":[0,2,0,0,0,0],\"closes\":[0,1,0,0,0,0]") != std::string::npos, "диагностика: Input 2 открывался дважды (второй раз после тест-источника), закрыт один раз");
             stop = true;
             th.join();
 
@@ -496,6 +635,7 @@ static int selftest() {
     bad += selftest_mic();
     bad += selftest_devices();
     bad += selftest_shm();
+    bad += selftest_inbuf();
     bad += selftest_driver_mixer();
     std::printf(bad ? "\nЕсть ошибки: %d\n" : "\nВсе проверки пройдены.\n", bad);
     return bad ? 1 : 0;
