@@ -8,11 +8,14 @@
 //   get | devices | quit
 //   set strip I gain ДБ | mute 0/1 | solo 0/1 | route K 0/1 | src off/sine/noise/file | file ПУТЬ
 //   set bus K gain ДБ | mute 0/1
+//   set mic I gain 0..30 | gate -80..-20 (-80 = выкл) | hpf 20..300 (20 = выкл) | comp 1..10 (1 = выкл)
+//                | ns 0..3 (выкл / мягкое / сильное / максимум) | nsamt 0..100    (I = 0 или 1, микрофон)
 //   set dev СЛОТ ИМЯ_УСТРОЙСТВА   (пустое имя или "-" отключает слот)
 // Ответы: строки JSON (hello, devices, state, m, err).
 #pragma once
 
 #include "dsp.h"
+#include "mic.h"
 #include "third_party/miniaudio.h"
 
 #include <array>
@@ -33,9 +36,10 @@ namespace bg {
 constexpr int kStrips = 8;
 constexpr int kBuses = 5;
 constexpr int kSlots = 7;
+constexpr int kMics = 2;
 constexpr size_t kMaxBlock = 4096;  // самый большой блок за один проход
 static const char* kSlotNames[kSlots] = {"hw1", "hw2", "a1", "a2", "a3", "b1", "b2"};
-static const char* kEngineVersion = "0.1.0";
+static const char* kEngineVersion = "0.2.0";
 
 // Кольцо «один пишет, один читает» для стерео-кадров. Связывает потоки разных устройств.
 struct Ring {
@@ -121,6 +125,7 @@ class Mixer {
 public:
     Strip strips[kStrips];
     Bus buses[kBuses];
+    MicChain mic[kMics];
     std::atomic<bool> dirty{true};
 
     explicit Mixer(ma_context* c) : ctx_(c) {
@@ -186,6 +191,12 @@ public:
             o << (i ? "," : "") << "{\"g\":" << s.gain_db.load() << ",\"m\":" << (s.mute.load() ? 1 : 0)
               << ",\"s\":" << (s.solo.load() ? 1 : 0) << ",\"r\":" << s.route.load() << ",\"src\":" << s.src.load() << "}";
         }
+        o << "],\"mic\":[";
+        for (int i = 0; i < kMics; ++i) {
+            const MicParams& m = mic[i].p;
+            o << (i ? "," : "") << "{\"g\":" << m.gain_db.load() << ",\"gate\":" << m.gate_db.load() << ",\"hpf\":" << m.hpf_hz.load()
+              << ",\"comp\":" << m.comp_ratio.load() << ",\"ns\":" << m.ns_mode.load() << ",\"amt\":" << m.ns_amt.load() << "}";
+        }
         o << "],\"buses\":[";
         for (int k = 0; k < kBuses; ++k)
             o << (k ? "," : "") << "{\"g\":" << buses[k].gain_db.load() << ",\"m\":" << (buses[k].mute.load() ? 1 : 0) << "}";
@@ -205,6 +216,10 @@ public:
         for (int i = 0; i < kStrips; ++i) o << (i ? "," : "") << "[" << strips[i].meter.read(0) << "," << strips[i].meter.read(1) << "]";
         o << "],\"b\":[";
         for (int k = 0; k < kBuses; ++k) o << (k ? "," : "") << "[" << buses[k].meter.read(0) << "," << buses[k].meter.read(1) << "]";
+        o << "],\"n\":[";
+        o.precision(1);
+        for (int i = 0; i < kMics; ++i)
+            o << (i ? "," : "") << "[" << mic[i].raw_floor.floor_db.load() << "," << mic[i].proc_floor.floor_db.load() << "]";
         o << "]}";
         return o.str();
     }
@@ -244,6 +259,18 @@ public:
                 return load_file(s, path);
             }
             else return "дорожка: неизвестное свойство " + what;
+        } else if (b == "mic") {
+            int i; std::string what; float v;
+            if (!(in >> i >> what >> v) || i < 0 || i >= kMics) return "микрофон: номер 0..1, свойство и число";
+            if (!std::isfinite(v)) return "микрофон: нужно число";
+            MicParams& m = mic[i].p;
+            if (what == "gain") m.gain_db = std::max(0.0f, std::min(30.0f, v));
+            else if (what == "gate") m.gate_db = std::max(-80.0f, std::min(-20.0f, v));
+            else if (what == "hpf") m.hpf_hz = v < 25.0f ? 0.0f : std::min(300.0f, v);
+            else if (what == "comp") m.comp_ratio = std::max(1.0f, std::min(10.0f, v));
+            else if (what == "ns") m.ns_mode = std::max(0, std::min(3, static_cast<int>(v)));
+            else if (what == "nsamt") m.ns_amt = std::max(0.0f, std::min(100.0f, v));
+            else return "микрофон: неизвестное свойство " + what;
         } else if (b == "bus") {
             int k; std::string what;
             if (!(in >> k >> what) || k < 0 || k >= kBuses) return "шина: неверный номер";
@@ -267,7 +294,7 @@ private:
     ma_context* ctx_;
     std::vector<ma_device_info> cap_, play_;
     std::string names_[kSlots];
-    bool ok_[kSlots];
+    std::atomic<bool> ok_[kSlots];
     std::unique_ptr<ma_device> dev_[kSlots];
     Role roles_[kSlots];
     int master_ = -1;
@@ -306,6 +333,7 @@ private:
         for (int i = 0; i < kStrips; ++i) strips[i].ring.init(8192);
         for (int k = 0; k < kBuses; ++k) buses[k].ring.init(8192);
         for (int s = 0; s < kSlots; ++s) ok_[s] = false;
+        for (int i = 0; i < kMics; ++i) mic[i].reset();   // звук остановлен: потоки закрыты в close_all()
 
         // Ведущее устройство: первая выходная шина, у которой есть устройство. Оно задаёт такт всей обработке.
         std::vector<bool> usable(kSlots, false);
@@ -420,7 +448,10 @@ private:
             for (int i = 0; i < kStrips; ++i) {
                 Strip& s = strips[i];
                 float* t = tmp_.data();
-                if (s.hw) s.ring.pop(t, n); else generate(s, i, t, n);
+                if (s.hw) {
+                    s.ring.pop(t, n);
+                    if (i < kMics && ok_[i]) mic[i].process(t, n);   // обработка микрофона
+                } else generate(s, i, t, n);
                 const bool silent = s.mute.load(std::memory_order_relaxed) || (any_solo && !s.solo.load(std::memory_order_relaxed));
                 const float target = silent ? 0.0f : gain_from_db(s.gain_db.load(std::memory_order_relaxed));
                 ramp(t, n, s.cur_gain, target);

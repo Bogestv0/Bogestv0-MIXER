@@ -28,7 +28,7 @@
 #include <io.h>
 #endif
 
-static const char* VERSION = "0.1.0";
+static const char* VERSION = "0.2.0";
 
 struct Engine {
     std::atomic<float> gain_lin{1.0f};
@@ -69,6 +69,125 @@ static void usage() {
         "Клавиши: + / - усиление, q выход.\n", VERSION);
 }
 
+
+// ---------- проверка обработки микрофона (этап 4) ----------
+static int selftest_mic() {
+    int bad = 0;
+    auto check = [&](bool ok, const char* what) { std::printf("%s %s\n", ok ? "ok    " : "ОШИБКА", what); if (!ok) ++bad; };
+    const size_t N = 48000 * 4, B = 128;
+    uint32_t rng = 2463534242u;
+    auto rnd = [&]() { rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5; return static_cast<float>(rng & 0xFFFFFF) / 8388608.0f - 1.0f; };
+    auto tone = [&](float hz, float dbfs) {
+        std::vector<float> v(N * 2);
+        const float a = bg::db_to_lin(dbfs);
+        for (size_t i = 0; i < N; ++i) v[i * 2] = v[i * 2 + 1] = a * std::sin(2.0f * 3.14159265f * hz * static_cast<float>(i) / 48000.0f);
+        return v;
+    };
+    auto noise = [&](float dbfs) {
+        std::vector<float> v(N * 2);
+        const float a = bg::db_to_lin(dbfs) * 1.732f;   // равномерный шум: RMS = пик / √3
+        for (size_t i = 0; i < N; ++i) v[i * 2] = v[i * 2 + 1] = a * rnd();
+        return v;
+    };
+    auto run = [&](bg::MicChain& c, const std::vector<float>& in) {
+        std::vector<float> out(in);
+        for (size_t o = 0; o < N; o += B) c.process(out.data() + o * 2, std::min(B, N - o));
+        return out;
+    };
+    // Уровень (дБFS по RMS) участка [from, to) в отсчётах.
+    auto level = [&](const std::vector<float>& v, size_t from, size_t to) {
+        double acc = 0.0;
+        for (size_t i = from; i < to; ++i) acc += static_cast<double>(v[i * 2]) * v[i * 2];
+        return 10.0f * std::log10(static_cast<float>(acc / static_cast<double>(to - from)) + 1e-20f);
+    };
+    auto neutral = [&](bg::MicChain& c) {
+        c.p.gain_db = 0.0f; c.p.gate_db = -80.0f; c.p.hpf_hz = 0.0f; c.p.comp_ratio = 1.0f; c.p.ns_mode = 0; c.p.ns_amt = 100.0f;
+    };
+    const size_t T0 = 48000, T1 = N;   // смотрим последние 3 секунды
+
+    {   // без настроек микрофон не меняется
+        bg::MicChain c; neutral(c);
+        auto in = tone(440.0f, -12.0f);
+        auto out = run(c, in);
+        float dmax = 0.0f;
+        for (size_t i = 0; i < in.size(); ++i) dmax = std::max(dmax, std::fabs(out[i] - in[i]));
+        check(dmax < 1e-6f, "микрофон без настроек проходит без изменений");
+    }
+    {   // усиление
+        bg::MicChain c; neutral(c); c.p.gain_db = 20.0f;
+        auto out = run(c, tone(1000.0f, -40.0f));
+        check(std::fabs(level(out, T0, T1) - level(tone(1000.0f, -40.0f), T0, T1) - 20.0f) < 0.2f, "усиление +20 дБ даёт ровно +20 дБ");
+    }
+    {   // защита от перегрузки
+        bg::MicChain c; neutral(c); c.p.gain_db = 30.0f;
+        auto out = run(c, tone(300.0f, -6.0f));
+        float peak = 0.0f; bool finite = true;
+        for (float x : out) { peak = std::max(peak, std::fabs(x)); finite = finite && std::isfinite(x); }
+        check(peak <= 1.0f && finite, "усиление +30 дБ на громком сигнале не выходит за ±1.0");
+    }
+    {   // фильтр низких частот
+        bg::MicChain c; neutral(c); c.p.hpf_hz = 100.0f;
+        auto lo_in = tone(40.0f, -20.0f), mid_in = tone(1000.0f, -20.0f);
+        const float low = level(run(c, lo_in), T0, T1) - level(lo_in, T0, T1);
+        bg::MicChain d; neutral(d); d.p.hpf_hz = 100.0f;
+        const float mid = level(run(d, mid_in), T0, T1) - level(mid_in, T0, T1);
+        std::printf("       фильтр 100 Гц: 40 Гц %.1f дБ, 1 кГц %.2f дБ\n", low, mid);
+        check(low < -20.0f, "фильтр 100 Гц: 40 Гц подавлено больше чем на 20 дБ");
+        check(std::fabs(mid) < 0.3f, "фильтр 100 Гц: 1 кГц проходит без изменений");
+    }
+    {   // гейт
+        bg::MicChain c; neutral(c); c.p.gate_db = -45.0f;
+        const float quiet = level(run(c, noise(-60.0f)), T0, T1);
+        bg::MicChain d; neutral(d); d.p.gate_db = -45.0f;
+        const float loud = level(run(d, tone(500.0f, -20.0f)), T0, T1);
+        check(quiet < -60.0f - 30.0f, "гейт -45 дБ закрывает шум -60 дБ (тише на 30 дБ и больше)");
+        check(std::fabs(loud - (-20.0f - 3.0103f)) < 0.3f, "гейт не трогает громкий сигнал");
+    }
+    {   // компрессор
+        bg::MicChain c; neutral(c); c.p.comp_ratio = 4.0f;
+        const float a = level(run(c, tone(1000.0f, -30.0f)), T0, T1);
+        bg::MicChain d; neutral(d); d.p.comp_ratio = 4.0f;
+        const float b = level(run(d, tone(1000.0f, -6.0f)), T0, T1);
+        check((b - a) < 24.0f - 6.0f, "компрессор 4:1 сжимает разницу между тихим и громким больше чем на 6 дБ");
+    }
+    {   // шумоподавление: фон должен стать заметно тише
+        bg::MicChain c; neutral(c); c.p.ns_mode = 3; c.p.ns_amt = 100.0f;
+        auto in = noise(-35.0f);
+        auto out = run(c, in);
+        const float drop = level(in, T0, T1) - level(out, T0, T1);
+        std::printf("       шум -35 дБ, «Максимум»: тише на %.1f дБ\n", drop);
+        check(drop > 15.0f, "шумоподавление «Максимум» опускает постоянный шум больше чем на 15 дБ");
+        bg::MicChain m; neutral(m); m.p.ns_mode = 1; m.p.ns_amt = 50.0f;
+        const float drop1 = level(in, T0, T1) - level(run(m, in), T0, T1);
+        std::printf("       шум -35 дБ, «Мягкое» 50%%: тише на %.1f дБ\n", drop1);
+        check(drop1 > 3.0f && drop1 < drop, "«Мягкое» слабее, чем «Максимум», но работает");
+        const float fr = c.raw_floor.floor_db.load(), fp = c.proc_floor.floor_db.load();
+        check(fr > -50.0f && fp < fr - 10.0f, "оценка фона в паузах: после подавления ниже, чем до");
+    }
+    {   // при силе 0 % звук просто задержан на 10 мс: смесь не гребенчатит
+        bg::MicChain c; neutral(c); c.p.ns_mode = 1; c.p.ns_amt = 0.0f;
+        auto in = tone(700.0f, -15.0f);
+        auto out = run(c, in);
+        float dmax = 0.0f;
+        for (size_t i = 6000; i < N; ++i) dmax = std::max(dmax, std::fabs(out[i * 2] - in[(i - 480) * 2]));
+        check(dmax < 1e-5f, "сила 0 %: звук идёт с задержкой ровно 480 отсчётов (10 мс)");
+    }
+    {   // переключение режимов на ходу не ломает звук
+        bg::MicChain c; neutral(c);
+        auto in = tone(500.0f, -20.0f);
+        std::vector<float> out(in);
+        bool finite = true; float jump = 0.0f, prev = 0.0f;
+        for (size_t o = 0; o < N; o += B) {
+            const size_t blk = o / B;
+            c.p.ns_mode = static_cast<int>((blk / 150) % 4);
+            c.process(out.data() + o * 2, std::min(B, N - o));
+        }
+        for (size_t i = 0; i < N; ++i) { finite = finite && std::isfinite(out[i * 2]); jump = std::max(jump, std::fabs(out[i * 2] - prev)); prev = out[i * 2]; }
+        check(finite && jump < 0.2f, "переключение шумодава на ходу без щелчков и NaN");
+    }
+    return bad;
+}
+
 static int selftest() {
     int bad = 0;
     auto check = [&](bool ok, const char* what) { std::printf("%s %s\n", ok ? "ok    " : "ОШИБКА", what); if (!ok) ++bad; };
@@ -93,6 +212,7 @@ static int selftest() {
     check(std::fabs(m.peak[0].load() - 0.75f) < 1e-6f && std::fabs(m.peak[1].load() - 0.5f) < 1e-6f, "метр: пики L=0.75 R=0.5");
     float v = m.read(0);
     check(std::fabs(v - 0.75f) < 1e-6f && std::fabs(m.peak[0].load() - 0.6f) < 1e-6f, "метр: плавный спад");
+    bad += selftest_mic();
     std::printf(bad ? "\nЕсть ошибки: %d\n" : "\nВсе проверки пройдены.\n", bad);
     return bad ? 1 : 0;
 }

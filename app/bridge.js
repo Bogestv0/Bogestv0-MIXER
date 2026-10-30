@@ -22,6 +22,14 @@
     { id: 'spk', name: 'Всё в колонки', desc: 'Все программы в колонки, микрофоны на стрим и звонки.', routes: [24, 24, 1, 1, 1, 1, 1, 1] }
   ];
   const GAIN_DEFAULTS = [-3, -5, -6, -14, -4, -9, -8, -12];
+  // Микрофоны (этап 4). g: усиление 0..30 дБ; gate: порог гейта −80..−20 (−80 = выкл); hpf: фильтр низких 20..300 Гц (20 = выкл);
+  // comp: степень компрессора 1..10 (1 = выкл); ns: шумодав 0 выкл / 1 мягкое / 2 сильное / 3 максимум; amt: сила шумодава, %.
+  const NS_AMT = [0, 50, 70, 100];     // сила по умолчанию для каждого режима
+  const MIC_DEFAULTS = [
+    { g: 10, gate: -45, hpf: 80, comp: 3, ns: 2, amt: 70 },
+    { g: 10, gate: -45, hpf: 80, comp: 3, ns: 1, amt: 50 }
+  ];
+  const MIC_CMD = { g: 'gain', gate: 'gate', hpf: 'hpf', comp: 'comp', ns: 'ns', amt: 'nsamt' };
 
   const B = (window.Bridge = {
     mode: 'none',          // tauri | dev | none
@@ -31,7 +39,7 @@
     meters: null,
     lastError: '',
     settings: null,
-    SLOTS, STRIP_DEFAULTS,
+    SLOTS, STRIP_DEFAULTS, MIC_DEFAULTS, NS_AMT,
     on(fn) { listeners.add(fn); return () => listeners.delete(fn); }
   });
 
@@ -43,7 +51,7 @@
       strips: STRIP_DEFAULTS.map((d) => ({ ...d })),
       scenes: SCENES_DEFAULT.map((s) => ({ ...s, routes: s.routes.slice() })),
       active: 'play',
-      ns: [2, 1],
+      mics: MIC_DEFAULTS.map((m) => ({ ...m })),
       devices: null,
       mixer: null
     };
@@ -80,7 +88,20 @@
       else text = localStorage.getItem('bogestv0.settings') || '';
     } catch (e) { /* без файла работаем с настройками по умолчанию */ }
     if (text) {
-      try { B.settings = Object.assign(defaults(), JSON.parse(text)); } catch (e) { B.settings = defaults(); }
+      try {
+        const saved = JSON.parse(text);
+        B.settings = Object.assign(defaults(), saved);
+        if (!Array.isArray(saved.mics)) {
+          // Версия 0.1.0 хранила только режим шумодава (ns): переносим его в новые настройки микрофонов.
+          B.settings.mics = MIC_DEFAULTS.map((m, i) => {
+            const ns = saved.ns && saved.ns[i] != null ? saved.ns[i] : m.ns;
+            return { ...m, ns, amt: NS_AMT[ns] || m.amt };
+          });
+        } else {
+          B.settings.mics = MIC_DEFAULTS.map((m, i) => ({ ...m, ...(saved.mics[i] || {}) }));
+        }
+        delete B.settings.ns;
+      } catch (e) { B.settings = defaults(); }
     }
   }
 
@@ -93,6 +114,7 @@
       buses: st.buses.map((b) => ({ g: b.g, m: b.m }))
     };
     B.settings.devices = st.dev;
+    if (st.mic) B.settings.mics = st.mic.map((m) => ({ g: m.g, gate: m.gate, hpf: m.hpf, comp: m.comp, ns: m.ns, amt: m.amt }));
   }
   function scheduleSave() {
     if (!B.applied) return;
@@ -115,6 +137,19 @@
   B.setSolo = (i, on) => B.send(`set strip ${i} solo ${on ? 1 : 0}`);
   B.setSrc = (i, name) => B.send(`set strip ${i} src ${name}`);
   B.setDevice = (slot, name) => B.send(`set dev ${slot} ${name || '-'}`);
+  // Микрофон: key = g | gate | hpf | comp | ns | amt. Окно сразу показывает новое значение, не дожидаясь ответа движка.
+  B.setMic = function (i, key, v) {
+    if (B.state && B.state.mic && B.state.mic[i]) B.state.mic[i][key] = v;
+    if (B.settings.mics[i]) B.settings.mics[i][key] = v;
+    return B.send(`set mic ${i} ${MIC_CMD[key]} ${v}`);
+  };
+  // Режим шумодава: вместе с ним ставится сила по умолчанию (её можно потом подвинуть на экране «Микрофон»).
+  B.setNs = function (i, mode) {
+    B.setMic(i, 'ns', mode);
+    if (mode > 0) B.setMic(i, 'amt', NS_AMT[mode]);
+  };
+  B.micOf = (i) => (B.state && B.state.mic && B.state.mic[i]) || B.settings.mics[i] || MIC_DEFAULTS[i];
+  B.sendMic = function (i, m) { Object.keys(MIC_CMD).forEach((k) => { if (m[k] != null) B.send(`set mic ${i} ${MIC_CMD[k]} ${m[k]}`); }); };
   // Ручное переключение маршрута: сцена становится «своими настройками».
   B.setRoute = function (i, k, on) {
     B.settings.active = null;
@@ -124,6 +159,8 @@
     const sc = B.settings.scenes.find((s) => s.id === id);
     if (!sc) return;
     sc.routes.forEach((mask, i) => { for (let k = 0; k < 5; k++) B.send(`set strip ${i} route ${k} ${(mask >> k) & 1}`); });
+    // Сцена может хранить и настройки микрофонов: mics: [ {ns, amt, gate, ...}, {...} ]. Поля, которых нет, не меняются.
+    if (Array.isArray(sc.mics)) sc.mics.forEach((m, i) => { if (m) B.sendMic(i, m); });
     B.settings.active = id;
     emit('state');
     scheduleSave();
@@ -133,6 +170,7 @@
   function applySaved() {
     const s = B.settings;
     if (s.devices) SLOTS.forEach((slot) => { if (s.devices[slot]) B.send(`set dev ${slot} ${s.devices[slot]}`); });
+    s.mics.forEach((m, i) => B.sendMic(i, m));
     const mx = s.mixer;
     if (mx) {
       mx.strips.forEach((st, i) => {
