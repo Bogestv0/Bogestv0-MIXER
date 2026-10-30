@@ -375,6 +375,24 @@ def patch_names(root: pathlib.Path) -> int:
         t = set_pin_name(t, cat, n, errors, rel)
         write_text(path, t, enc, nl)
 
+    # Input 1 (динамики): Windows не применяет своё имя к «встроенному» устройству (ePortConnIntegratedDevice),
+    # поэтому делаем его внешним разъёмом, как наушники. Input 3 (HDMI): имя берётся из описания монитора.
+    for rel, old, new, what in (
+        ("audio/sysvad/EndpointsCommon/speakertoptable.h",
+         "    eGeoLocFront,\n    eGenLocPrimaryBox,\n    ePortConnIntegratedDevice,",
+         "    eGeoLocFront,\n    eGenLocPrimaryBox,\n    ePortConnJack,",
+         "тип разъёма динамиков"),
+        ("audio/sysvad/TabletAudioSample/hdmitopo.cpp",
+         'L"SinkDescription Sample"', 'L"Bogestv0 Input 3"', "описание монитора HDMI"),
+    ):
+        fp = root / rel
+        if not fp.exists():
+            errors.append(f"нет файла {rel}")
+            continue
+        ft, fenc, fnl = read_text(fp)
+        ft = replace_once(ft, old, new, what, errors)
+        write_text(fp, ft, fenc, fnl)
+
     # INF: регистрация имён.
     path = root / INX
     t, enc, nl = read_text(path)
@@ -408,7 +426,7 @@ def patch_names(root: pathlib.Path) -> int:
             print("ОШИБКА: " + e, file=sys.stderr)
         return 1
     write_text(path, t, enc, nl)
-    print("ok: имена Input 1–6 (таблицы топологии и INF)")
+    print("ok: имена Input 1–6 (таблицы топологии, разъём динамиков, описание HDMI, INF)")
     return 0
 
 
