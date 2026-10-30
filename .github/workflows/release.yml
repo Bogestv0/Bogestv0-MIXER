@@ -27,6 +27,16 @@ jobs:
 
       - run: npm ci
 
+      # Звуковой движок кладётся рядом с приложением (Tauri добавит его в установщик).
+      - name: Сборка движка
+        shell: bash
+        run: |
+          cmake -S engine -B build-engine -A x64
+          cmake --build build-engine --config Release
+          build-engine/Release/engine.exe --selftest
+          mkdir -p src-tauri/binaries
+          cp build-engine/Release/engine.exe src-tauri/binaries/engine-x86_64-pc-windows-msvc.exe
+
       # Тег, package.json, Cargo.toml и tauri.conf.json должны иметь одну версию.
       - name: Проверка версии
         shell: bash
