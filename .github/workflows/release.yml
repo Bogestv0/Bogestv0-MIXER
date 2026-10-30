@@ -9,10 +9,29 @@ permissions:
   contents: write
 
 jobs:
+  # Драйвер виртуальных устройств собирается в том же запуске и кладётся внутрь установщика.
+  driver:
+    uses: ./.github/workflows/driver.yml
+
   windows:
+    needs: driver
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Файлы драйвера идут в ресурсы установщика (src-tauri/driver, см. tauri.conf.json); установщик сам запускает install.ps1.
+      - uses: actions/download-artifact@v4
+        with:
+          name: bogestv0-driver-x64
+          path: src-tauri/driver
+
+      - name: Проверка файлов драйвера
+        shell: pwsh
+        run: |
+          $need = 'ComponentizedAudioSample.inf', 'TabletAudioSample.sys', 'package.cer', 'install.ps1', 'uninstall.ps1', 'install-driver.cmd', 'uninstall-driver.cmd'
+          $missing = $need | Where-Object { -not (Test-Path (Join-Path 'src-tauri/driver' $_)) }
+          Get-ChildItem src-tauri/driver | ForEach-Object { Write-Host $_.Name }
+          if ($missing) { Write-Error ('В папке драйвера нет файлов: ' + ($missing -join ', ')); exit 1 }
 
       - uses: actions/setup-node@v4
         with:

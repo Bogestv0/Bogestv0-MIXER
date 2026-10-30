@@ -2,6 +2,8 @@ name: Driver
 
 on:
   workflow_dispatch:
+  # Вызывается из release.yml: драйвер собирается заново при каждом релизе и попадает внутрь установщика.
+  workflow_call:
   push:
     paths: ['driver/**', '.github/workflows/driver.yml']
 
@@ -47,8 +49,8 @@ jobs:
                    Where-Object { $_.FullName -match '\\x64\\Release\\' -and $_.FullName -notmatch '\\obj\\' }
           foreach ($f in $files) { Copy-Item $f.FullName (Join-Path out $f.Name) -Force; Write-Host $f.FullName }
           if (-not $files) { Write-Host 'Файлов драйвера не найдено, смотрите журнал сборки.' }
-          # Скрипты установки и отката кладём рядом с драйвером (инструкция в docs/ЭТАП-6.md)
-          Copy-Item ours\driver\install.ps1, ours\driver\uninstall.ps1 out -Force
+          # Скрипты установки и отката кладём рядом с драйвером (их вызывает установщик микшера, см. docs/ЭТАП-6.md)
+          Copy-Item ours\driver\install.ps1, ours\driver\uninstall.ps1, ours\driver\install-driver.cmd, ours\driver\uninstall-driver.cmd out -Force
 
       - uses: actions/upload-artifact@v4
         if: always()
