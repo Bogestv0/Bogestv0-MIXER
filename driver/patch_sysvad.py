@@ -11,6 +11,8 @@
 Часть 6.2b: число устройств 4+4 -> 6+2. Воспроизведение: к четырём штатным добавляются «Input 5» и «Input 6» (копии
 SPDIF-пары: те же таблицы, но свои имена подустройств, свои разделы INF). Запись: остаются MicIn и MicArray1
 («Output 1», «Output 2»), массивы 2 и 3 убираются из списка устройств.
+Часть 6.4: мост с общей памятью движка. В EndpointsCommon добавляются наши файлы (driver/src), потоки SysVAD вместо тона и записи
+в файл гоняют звук через кольца общей памяти, драйвер создаёт управляющее устройство Bogestv0Mixer, через которое движок получает память.
 """
 import pathlib
 import re
@@ -430,12 +432,196 @@ def patch_names(root: pathlib.Path) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# 6.4: мост с общей памятью движка
+# ---------------------------------------------------------------------------------------------------------------------
+BRIDGE_SRC = pathlib.Path(__file__).resolve().parent / "src"
+BRIDGE_FILES = ("bogestvbridge.cpp", "bogestvbridge.h", "bogestv_ioctl.h")
+SYSVAD = "audio/sysvad"
+
+
+def insert_once(text: str, anchor: str, add: str, what: str, errors: list, before: bool = False) -> str:
+    """Вставляет add рядом с anchor (после него или до). Если add уже на месте, пропускает. anchor обязан встретиться ровно один раз."""
+    if add in text:
+        return text
+    if text.count(anchor) != 1:
+        errors.append(f"{what}: опорный фрагмент найден {text.count(anchor)} раз (ожидалось 1)")
+        return text
+    return text.replace(anchor, add + anchor if before else anchor + add)
+
+
+def patch_bridge(root: pathlib.Path) -> int:
+    errors: list = []
+    base = root / SYSVAD
+    # 1. наши файлы -> EndpointsCommon (ту же папку видит и TabletAudioSample через пути включения)
+    for name in BRIDGE_FILES:
+        src = BRIDGE_SRC / name
+        if not src.exists():
+            errors.append(f"нет нашего файла {src}")
+            continue
+        raw = src.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")   # как весь SysVAD: CRLF
+        (base / "EndpointsCommon" / name).write_bytes(raw)
+
+    # 2. проекты
+    path = base / "EndpointsCommon/EndpointsCommon.vcxproj"
+    t, enc, nl = read_text(path)
+    t = insert_once(t, '    <ClCompile Include="a2dphpminwavert.cpp" />\n', '    <ClCompile Include="bogestvbridge.cpp" />\n', "EndpointsCommon.vcxproj", errors)
+    write_text(path, t, enc, nl)
+
+    path = base / "TabletAudioSample/TabletAudioSample.vcxproj"
+    t, enc, nl = read_text(path)
+    old = "$(DDK_LIB_PATH)\\portcls.lib"
+    if old not in t:
+        errors.append("TabletAudioSample.vcxproj: нет portcls.lib в зависимостях")
+    elif "wdmsec.lib" not in t:
+        t = t.replace(old, "$(DDK_LIB_PATH)\\wdmsec.lib;" + old)
+    write_text(path, t, enc, nl)
+
+    # 3. adapter.cpp: запуск и выгрузка моста
+    path = base / "adapter.cpp"
+    t, enc, nl = read_text(path)
+    t = insert_once(t, '#include "simple.h"\n', '#include "bogestvbridge.h"\n', "adapter.cpp: include", errors)
+    t = insert_once(t, "    DriverObject->DriverUnload = DriverUnload;\n",
+                    "\n    //\n    // Bogestv0: общая память и устройство для движка (этап 6.4). Ошибка не фатальна: без моста SysVAD работает как раньше.\n    //\n    BogestvBridgeInit(DriverObject);\n",
+                    "adapter.cpp: BogestvBridgeInit", errors)
+    t = insert_once(t, '    DPF(D_TERSE, ("[DriverUnload]"));\n', "\n    BogestvBridgeUnload();\n", "adapter.cpp: BogestvBridgeUnload", errors)
+    write_text(path, t, enc, nl)
+
+    # 4. поток: заголовок
+    path = base / "EndpointsCommon/minwavertstream.h"
+    t, enc, nl = read_text(path)
+    t = insert_once(t, '#include "tonegenerator.h"\n', '#include "bogestvbridge.h"\n', "minwavertstream.h: include", errors)
+    t = insert_once(t, "    ToneGenerator               m_ToneGenerator;\n",
+                    "    LONG                        m_bgRing1;      // Bogestv0: номер кольца + 1 (0 = поток не наш)\n"
+                    "    BOOLEAN                     m_bgSync;\n"
+                    "    ULONGLONG                   m_bgFrames;     // сколько кадров уже передано в кольцо / взято из кольца\n"
+                    "    BG_FMT                      m_bgFmt;\n",
+                    "minwavertstream.h: поля", errors)
+    t = insert_once(t, "    VOID WriteBytes\n", "    VOID BgPump(_In_ ULONG ByteDisplacement);\n", "minwavertstream.h: BgPump", errors, before=True)
+    write_text(path, t, enc, nl)
+
+    # 5. поток: код
+    path = base / "EndpointsCommon/minwavertstream.cpp"
+    t, enc, nl = read_text(path)
+    t = insert_once(t, "    RtlCopyMemory(m_pWfExt, pWfEx, sizeof(WAVEFORMATEX) + pWfEx->cbSize);\n",
+                    "\n    // Bogestv0: наш ли это поток (по имени подустройства), и в какой он формат.\n"
+                    "    m_bgRing1 = 0;\n    m_bgSync = TRUE;\n    m_bgFrames = 0;\n"
+                    "    if (!m_pMiniport->IsOffloadPin(Pin_) && !m_pMiniport->IsKeywordDetectorPin(Pin_) && !(Capture_ && m_pMiniport->IsLoopbackPin(Pin_)))\n"
+                    "    {\n"
+                    "        LONG bgRing = BogestvRingFor(m_pMiniport->m_pMiniportPair->WaveName, Capture_);\n"
+                    "        if (bgRing >= 0)\n"
+                    "        {\n"
+                    "            BogestvFillFmt(&m_bgFmt, m_pWfExt);\n"
+                    "            m_bgRing1 = bgRing + 1;\n"
+                    "        }\n"
+                    "    }\n",
+                    "minwavertstream.cpp: Init", errors)
+    t = insert_once(t, "    m_KsState = State_;\n\n#if defined(SYSVAD_BTH_BYPASS)",
+                    "    if (m_bgRing1 > 0)\n    {\n        m_bgSync = TRUE;\n        BogestvStreamRun(m_bgRing1 - 1, m_bCapture, (State_ == KSSTATE_RUN), &m_bgFmt);\n    }\n\n",
+                    "minwavertstream.cpp: SetState", errors, before=True)
+    # деструктор: поток закрыт, кольцо больше не активно
+    t = insert_once(t, "    if (NULL != m_pMiniport)\n    {\n        if (m_pAudioModules)\n",
+                    "    if (m_bgRing1 > 0)\n    {\n        BogestvStreamRun(m_bgRing1 - 1, m_bCapture, FALSE, NULL);\n        m_bgRing1 = 0;\n    }\n",
+                    "minwavertstream.cpp: деструктор", errors, before=True)
+    # воспроизведение: читаем буфер всегда (а не только при записи файлов)
+    t = replace_once(t, "        if (!g_DoNotCreateDataFiles)\n        {\n            // Read from buffer and write to a file.",
+                     "        if (!g_DoNotCreateDataFiles || m_bgRing1 > 0)\n        {\n            // Read from buffer and write to a file.",
+                     "minwavertstream.cpp: условие чтения", errors)
+    write_text(path, t, enc, nl)
+    return finish_bridge(path, errors)
+
+
+BGPUMP = """
+//=============================================================================
+#pragma code_seg()
+VOID CMiniportWaveRTStream::BgPump
+(
+    _In_ ULONG ByteDisplacement
+)
+/*++
+
+Bogestv0 (этап 6.4): переносит кадры между буфером DMA потока и кольцом общей памяти.
+Воспроизведение: кадры, которые «проиграло» бы устройство, уходят в кольцо (их заберёт движок).
+Запись: буфер заполняется звуком из кольца (его туда кладёт движок).
+
+--*/
+{
+    const ULONG blockAlign = m_pWfExt ? m_pWfExt->Format.nBlockAlign : 0;
+    if (blockAlign == 0 || m_ulDmaBufferSize == 0 || m_pDmaBuffer == NULL || m_bgRing1 <= 0)
+    {
+        return;
+    }
+
+    const ULONGLONG curFrame = m_ullLinearPosition / blockAlign;
+    const ULONGLONG endFrame = (m_ullLinearPosition + ByteDisplacement) / blockAlign;
+    const ULONGLONG bufFrames = m_ulDmaBufferSize / blockAlign;
+
+    // Первый вызов после запуска или сброс позиции: начинаем с текущего кадра.
+    if (m_bgSync || m_bgFrames > endFrame)
+    {
+        m_bgFrames = curFrame;
+        m_bgSync = FALSE;
+    }
+    // Отстали больше, чем размер буфера: старое уже перезаписано.
+    if (endFrame - m_bgFrames > bufFrames)
+    {
+        m_bgFrames = endFrame - bufFrames;
+    }
+
+    const ULONG frames = (ULONG)(endFrame - m_bgFrames);
+    if (frames > 0)
+    {
+        if (m_bCapture)
+        {
+            BogestvCapture(m_bgRing1 - 1, m_pDmaBuffer, m_ulDmaBufferSize, m_bgFrames, frames, &m_bgFmt);
+        }
+        else
+        {
+            BogestvRender(m_bgRing1 - 1, m_pDmaBuffer, m_ulDmaBufferSize, m_bgFrames, frames, &m_bgFmt);
+        }
+        m_bgFrames = endFrame;
+    }
+}
+"""
+
+
+def finish_bridge(path: pathlib.Path, errors: list) -> int:
+    """Достраивает minwavertstream.cpp: хуки в WriteBytes/ReadBytes и тело BgPump."""
+    t, enc, nl = read_text(path)
+    hook = "    if (m_bgRing1 > 0)\n    {\n        BgPump(ByteDisplacement);\n        return;\n    }\n\n"
+    anchors = [
+        ("    ULONG bufferOffset = m_ullLinearPosition % m_ulDmaBufferSize;\n\n    // Normally this will loop no more than once for a single wrap, but if\n"
+         "    // many bytes have been displaced then this may loops many times.\n    while (ByteDisplacement > 0)\n    {\n"
+         "        ULONG runWrite = min(ByteDisplacement, m_ulDmaBufferSize - bufferOffset);\n            m_ToneGenerator", "WriteBytes"),
+        ("    ULONG bufferOffset = m_ullLinearPosition % m_ulDmaBufferSize;\n\n    // Normally this will loop no more than once for a single wrap, but if\n"
+         "    // many bytes have been displaced then this may loops many times.\n    while (ByteDisplacement > 0)\n    {\n"
+         "        ULONG runWrite = min(ByteDisplacement, m_ulDmaBufferSize - bufferOffset);\n        m_SaveData", "ReadBytes"),
+    ]
+    for anchor, what in anchors:
+        marker = hook + anchor
+        if marker in t:
+            continue
+        if t.count(anchor) != 1:
+            errors.append(f"minwavertstream.cpp: {what}: опорный фрагмент найден {t.count(anchor)} раз (ожидалось 1)")
+            continue
+        t = t.replace(anchor, hook + anchor)
+    if "CMiniportWaveRTStream::BgPump" not in t:
+        t = t.rstrip("\n") + "\n" + BGPUMP
+    if errors:
+        for e in errors:
+            print("ОШИБКА: " + e, file=sys.stderr)
+        return 1
+    write_text(path, t, enc, nl)
+    print("ok: мост с общей памятью (6.4): файлы, проекты, adapter.cpp, потоки")
+    return 0
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print(__doc__)
         return 2
     root = pathlib.Path(sys.argv[1])
-    for step in (patch_inx, patch_inx_devices, patch_minipairs, patch_names):
+    for step in (patch_inx, patch_inx_devices, patch_minipairs, patch_names, patch_bridge):
         rc = step(root)
         if rc:
             return rc

@@ -251,6 +251,10 @@ public:
     const std::string& shm_error() const { return shm_err_; }
     bool driver_alive() const { return drv_alive_.load(); }
     Shm* shm() const { return shm_.get(); }
+    // Драйвер найден в системе (устройство Bogestv0Mixer есть), даже если память от него получить не удалось.
+    bool driver_found() const { return shm_ ? shm_->driver_found() : driver_found_; }
+    bool via_driver() const { return shm_ && shm_->via_driver(); }
+    const std::string& driver_note() const { return shm_ ? shm_->driver_note() : driver_note_; }
 
     // Сторож: драйвер жив, если его счётчик сдвинулся с прошлой проверки. Меняется набор открытых потоков: окно получит новое состояние.
     void poll_driver() {
@@ -301,7 +305,7 @@ public:
         for (int s = 0; s < kSlots; ++s) o << (s ? "," : "") << "\"" << kSlotNames[s] << "\":\"" << json_escape(names_[s]) << "\"";
         o << "},\"ok\":{";
         for (int s = 0; s < kSlots; ++s) o << (s ? "," : "") << "\"" << kSlotNames[s] << "\":" << (ok_[s] ? 1 : 0);
-        o << "},\"drv\":{\"shm\":" << (shm_ ? 1 : 0) << ",\"alive\":" << (drv_alive_.load() ? 1 : 0) << ",\"in\":[";
+        o << "},\"drv\":{\"shm\":" << (shm_ ? 1 : 0) << ",\"via\":" << (shm_ && shm_->via_driver() ? 1 : 0) << ",\"found\":" << (driver_found() ? 1 : 0) << ",\"alive\":" << (drv_alive_.load() ? 1 : 0) << ",\"in\":[";
         const unsigned mk = drv_mask_.load();
         for (int i = 0; i < kShmInRings; ++i) o << (i ? "," : "") << ((mk >> (1 + i)) & 1u);
         o << "],\"out\":[";
@@ -409,6 +413,8 @@ private:
     std::vector<float> tmp_;
     std::unique_ptr<Shm> shm_;
     std::string shm_err_;
+    bool driver_found_ = false;
+    std::string driver_note_;
     ShmRing shm_in_[kShmInRings], shm_out_[kShmOutRings];
     bool drv_was_active_[kShmInRings] = {};        // только аудио-поток
     uint32_t last_driver_beat_ = 0;                // только сторож
@@ -648,6 +654,7 @@ inline int run_server(ma_context& ctx) {
     emit(mixer.devices_json());
     emit(mixer.state_json());
     if (!mixer.shm_ready()) emit_err("общая память драйвера недоступна: " + mixer.shm_error() + " (виртуальные устройства работать не будут)");
+    else if (mixer.driver_found() && !mixer.via_driver()) emit_err("драйвер найден, но звук через него не идёт: " + mixer.driver_note() + ". Используется запасная память движка (виртуальные устройства не работают).");
 
     // Метры ~30 раз в секунду, состояние — когда что-то изменилось.
     std::thread pump([&] {

@@ -156,7 +156,7 @@ html,body{height:100%;overflow:hidden}
         <div style="flex:0 0 auto;background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px">
           <div style="display:flex;justify-content:space-between;align-items:center">
             <h2 style="margin:0;font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Виртуальные устройства Bogestv0</h2>
-            <span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 10px;border-radius:99px;background:var(--warn-soft);color:var(--warn)">Драйвер: этап 6</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 10px;border-radius:99px;{{drvPill}}">{{drvText}}</span>
           </div>
           <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
             <sc-for list="{{virtuals}}" as="v">
@@ -169,7 +169,7 @@ html,body{height:100%;overflow:hidden}
               </div>
             </sc-for>
           </div>
-          <div style="font-size:13px;color:var(--muted)">Пока драйвера нет, V1–V6 проверяются тест-сигналом на экране «Микшер». Для проверки B1 и B2 можно назначить любой выход (например, виртуальный кабель).</div>
+          <div style="font-size:13px;color:var(--muted)">{{virtualsNote}}</div>
         </div>
       </div>
     </div>
@@ -248,18 +248,36 @@ class Component extends DCLogic {
 
     const vSig = 'background:var(--signal-soft);color:var(--signal)';
     const vWarn = 'background:var(--warn-soft);color:var(--warn)';
+    // Драйвер (этап 6.4): st.drv = { shm, via (память от драйвера), found (устройство драйвера есть), alive, in[6], out[2] }
+    const drv = (st && st.drv) || null;
+    const via = !!(drv && drv.via);
+    const found = !!(drv && drv.found);
+    let drvText = 'Драйвер: нет данных', drvPill = 'background:var(--bg);color:var(--muted)';
+    if (drv) {
+      if (via && drv.alive) { drvText = 'Драйвер работает'; drvPill = 'background:var(--ok-soft);color:var(--ok)'; }
+      else if (via) { drvText = 'Драйвер подключён, звука пока нет'; drvPill = 'background:var(--signal-soft);color:var(--signal)'; }
+      else if (found) { drvText = 'Драйвер найден, но не подключён'; drvPill = 'background:var(--warn-soft);color:var(--warn)'; }
+      else { drvText = 'Драйвер не установлен'; drvPill = 'background:var(--bg);color:var(--muted)'; }
+    }
+    const open = (i) => via && drv.in && drv.in[i] ? 'открыто программой' : null;
+    const openOut = (j) => via && drv.out && drv.out[j] ? 'читает программа' : null;
     const virtuals = [
-      { tag: 'V1', name: 'Bogestv0 Input 1', hint: 'для игр', tagStyle: vSig },
-      { tag: 'V2', name: 'Bogestv0 Input 2', hint: 'для музыки', tagStyle: vSig },
-      { tag: 'V3', name: 'Bogestv0 Input 3', hint: 'для Discord', tagStyle: vSig },
-      { tag: 'V4', name: 'Bogestv0 Input 4', hint: 'для браузера', tagStyle: vSig },
-      { tag: 'V5', name: 'Bogestv0 Input 5', hint: 'для донатов', tagStyle: vSig },
-      { tag: 'V6', name: 'Bogestv0 Input 6', hint: 'для второго браузера', tagStyle: vSig },
-      { tag: 'B1', name: 'Bogestv0 Output 1', hint: 'микрофон для OBS', tagStyle: vWarn },
-      { tag: 'B2', name: 'Bogestv0 Output 2', hint: 'микрофон для звонков', tagStyle: vWarn }
+      { tag: 'V1', name: 'Bogestv0 Input 1', hint: open(0) || 'для игр', tagStyle: vSig },
+      { tag: 'V2', name: 'Bogestv0 Input 2', hint: open(1) || 'для музыки', tagStyle: vSig },
+      { tag: 'V3', name: 'Bogestv0 Input 3', hint: open(2) || 'для Discord', tagStyle: vSig },
+      { tag: 'V4', name: 'Bogestv0 Input 4', hint: open(3) || 'для браузера', tagStyle: vSig },
+      { tag: 'V5', name: 'Bogestv0 Input 5', hint: open(4) || 'для донатов', tagStyle: vSig },
+      { tag: 'V6', name: 'Bogestv0 Input 6', hint: open(5) || 'для второго браузера', tagStyle: vSig },
+      { tag: 'B1', name: 'Bogestv0 Output 1', hint: openOut(0) || 'микрофон для OBS', tagStyle: vWarn },
+      { tag: 'B2', name: 'Bogestv0 Output 2', hint: openOut(1) || 'микрофон для звонков', tagStyle: vWarn }
     ];
+    const virtualsNote = via
+      ? 'Звук идёт через драйвер: в программе (Spotify, игра, Discord) выберите «Bogestv0 Input N» устройством вывода. «Bogestv0 Output 1/2» видят OBS и Discord как микрофон. Если у устройства в Windows частота не 48 000 Гц, звук пойдёт с другой высотой: поставьте 48 000 Гц в свойствах устройства (позже это сделается само).'
+      : found
+        ? 'Драйвер установлен, но движок не смог получить от него память. Подробности в сообщении об ошибке внизу окна. Пока V1–V6 проверяются тест-сигналом на экране «Микшер».'
+        : 'Драйвера нет: V1–V6 проверяются тест-сигналом на экране «Микшер». Установка драйвера описана в docs/ЭТАП-6.md (часть 6.3). Для проверки B1 и B2 можно назначить любой выход (например, виртуальный кабель).';
     const used = Object.keys(dev).filter((k) => dev[k]).length;
-    return { devices, slots, virtuals, foundCount: list.length, usedCount: used, refresh: () => B.send('devices') };
+    return { devices, slots, virtuals, drvText, drvPill, virtualsNote, foundCount: list.length, usedCount: used, refresh: () => B.send('devices') };
   }
 }
 </script>

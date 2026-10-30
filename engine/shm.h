@@ -17,6 +17,11 @@
 //     Если счётчик стоит на месте больше ~2 секунд, другая сторона считается отсутствующей.
 //   * Нехватка данных заполняется тишиной, переполнение отбрасывает лишнее. Оба случая считаются в drops / starved.
 //
+// Откуда берётся память (этап 6.4):
+//   * Windows с установленным драйвером: память создаёт ДРАЙВЕР. Движок открывает \\.\Bogestv0Mixer и одним IOCTL получает адрес
+//     (см. driver/src/bogestv_ioctl.h). Заголовок и кольца готовит драйвер; reserved[i] = частота, с которой Windows открыла кольцо i.
+//   * Иначе (нет драйвера, Linux, проверки, --fake-driver): память создаёт сам движок, как в 6.1.
+//
 // Раскладка памяти (все числа little-endian, как есть на x64):
 //   [0, 256)                         заголовок ShmHeader
 //   [256 + i * kShmRingStride, ...)  кольцо i: управляющий блок ShmRingCtl (128 байт), затем кадры (кадров * 2 * 4 байта)
@@ -33,7 +38,9 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include <winioctl.h>
 #include <sddl.h>
+#include "../driver/src/bogestv_ioctl.h"
 #else
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -155,7 +162,21 @@ public:
         s->role_ = role;
         if (!s->map(name, role == Role::Engine, err)) return nullptr;
         ShmHeader* h = s->hdr_;
-        if (role == Role::Engine) {
+        if (role == Role::Engine && s->via_driver_) {
+            // Заголовок готовит драйвер. Если он не тот, ничего не пишем в память ядра.
+            if (h->magic.load(std::memory_order_acquire) != kShmMagic || h->version != kShmVersion ||
+                h->ring_frames != kShmRingFrames || h->ring_stride != kShmRingStride) {
+                err = "драйвер вернул память с неверной раскладкой (версия драйвера не совпадает с движком)";
+                return nullptr;
+            }
+            const uint32_t b0 = h->engine_beat.load(std::memory_order_relaxed);
+            if (h->engine_pid != 0) {   // прежний движок мог упасть, не обнулив pid; драйвер пускает одного, поэтому это след
+                sleep_ms(150);
+                if (h->engine_beat.load(std::memory_order_relaxed) != b0) { err = "общая память уже занята другим движком"; return nullptr; }
+            }
+            for (int i = 0; i < kShmInRings; ++i) s->ring(i).discard();
+            h->engine_pid = current_pid();
+        } else if (role == Role::Engine) {
             if (h->magic.load(std::memory_order_acquire) == kShmMagic && h->version == kShmVersion && h->ring_frames == kShmRingFrames) {
                 // Память осталась от прежнего движка. Если ею пользуется живой, его счётчик идёт.
                 const uint32_t b0 = h->engine_beat.load(std::memory_order_relaxed);
@@ -199,6 +220,12 @@ public:
     ShmRing in(int i) const { return ring(i); }                       // V1..V6: пишет драйвер
     ShmRing out(int i) const { return ring(kShmInRings + i); }        // B1, B2: пишет движок
     const std::string& where() const { return where_; }
+    // Память пришла от драйвера (а не создана движком).
+    bool via_driver() const { return via_driver_; }
+    // Управляющее устройство драйвера нашлось в системе (даже если память взять не удалось).
+    bool driver_found() const { return driver_found_; }
+    // Если драйвер найден, но память от него не получена: почему (для сообщения в окне).
+    const std::string& driver_note() const { return driver_note_; }
 
     static void sleep_ms(unsigned ms) {
 #ifdef _WIN32
@@ -217,8 +244,12 @@ private:
     unsigned char* base_ = nullptr;
     ShmHeader* hdr_ = nullptr;
     std::string where_;
+    bool via_driver_ = false;
+    bool driver_found_ = false;
+    std::string driver_note_;
 #ifdef _WIN32
     HANDLE h_ = nullptr;
+    HANDLE dev_ = nullptr;     // дескриптор устройства драйвера: пока он открыт, отображение живёт
 #else
     int fd_ = -1;
     std::string path_;
@@ -233,7 +264,42 @@ private:
     }
 
 #ifdef _WIN32
+    // Память от драйвера. true = получили. Если устройства нет, driver_found_ остаётся false.
+    bool map_driver() {
+        HANDLE d = CreateFileW(BOGESTV_DEVICE_USER_PATH, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+        if (d == INVALID_HANDLE_VALUE) {
+            const DWORD e = GetLastError();
+            if (e != ERROR_FILE_NOT_FOUND && e != ERROR_PATH_NOT_FOUND) {
+                driver_found_ = true;
+                driver_note_ = "устройство драйвера есть, но не открылось (код Windows " + std::to_string(static_cast<unsigned long>(e)) + ")";
+            }
+            return false;
+        }
+        driver_found_ = true;
+        BOGESTV_MAP_OUT out = {};
+        DWORD got = 0;
+        if (!DeviceIoControl(d, IOCTL_BOGESTV_MAP_SHM, nullptr, 0, &out, sizeof(out), &got, nullptr)) {
+            const DWORD e = GetLastError();
+            driver_note_ = (e == ERROR_BUSY || e == ERROR_DEVICE_IN_USE)
+                ? "драйвер уже отдал память другому движку"
+                : "драйвер не отдал память (код Windows " + std::to_string(static_cast<unsigned long>(e)) + ")";
+            CloseHandle(d);
+            return false;
+        }
+        if (got < sizeof(out) || out.base == 0 || out.total_bytes < kShmTotalBytes) {
+            driver_note_ = "драйвер вернул память неверного размера";
+            CloseHandle(d);
+            return false;
+        }
+        dev_ = d;
+        base_ = reinterpret_cast<unsigned char*>(static_cast<uintptr_t>(out.base));
+        hdr_ = reinterpret_cast<ShmHeader*>(base_);
+        where_ = "драйвер (Bogestv0Mixer)";
+        via_driver_ = true;
+        return true;
+    }
     bool map(const std::string& name, bool create, std::string& err) {
+        if (create && map_driver()) return true;
         const char* prefixes[] = {"Global\\", "Local\\"};
         DWORD last = 0;
         for (const char* pre : prefixes) {
@@ -265,9 +331,10 @@ private:
         return false;
     }
     void unmap() {
-        if (base_) UnmapViewOfFile(base_);
+        if (dev_) CloseHandle(dev_);       // драйвер сам снимает отображение при закрытии дескриптора
+        else if (base_) UnmapViewOfFile(base_);
         if (h_) CloseHandle(h_);
-        base_ = nullptr; hdr_ = nullptr; h_ = nullptr;
+        base_ = nullptr; hdr_ = nullptr; h_ = nullptr; dev_ = nullptr;
     }
 public:
     static void unlink_name(const std::string&) {}   // в Windows память исчезает сама, когда закрыта последняя ссылка
