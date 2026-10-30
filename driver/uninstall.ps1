@@ -1,6 +1,16 @@
 ﻿# Удаление драйвера Bogestv0 Virtual Audio. Запускать от имени администратора. Тестовый режим не трогает.
 # Ключ -Auto: так его вызывает деинсталлятор микшера. При обновлении микшера (деинсталлятор запущен с /UPDATE) драйвер не трогается.
 param([switch]$Auto)
+
+# Установщик Tauri 32-битный и запускает 32-битный PowerShell: он не видит bcdedit/pnputil из System32 и не может ставить 64-битный драйвер.
+# Поэтому на 64-битной Windows скрипт сам перезапускается в 64-битном PowerShell (папка Sysnative) с теми же ключами.
+if ([Environment]::Is64BitOperatingSystem -and -not [Environment]::Is64BitProcess) {
+    $sn = Join-Path $env:SystemRoot 'Sysnative\WindowsPowerShell\v1.0\powershell.exe'
+    $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath)
+    if ($Auto) { $a += '-Auto' }
+    & $sn @a
+    exit $LASTEXITCODE
+}
 $ErrorActionPreference = 'Stop'
 $hwid = 'Root\Sysvad_ComponentizedAudioSample'
 

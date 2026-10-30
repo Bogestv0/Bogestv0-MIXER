@@ -9,9 +9,14 @@
 
 !macro NSIS_HOOK_POSTINSTALL
   Push $0
+  Push $1
+  ; Установщик 32-битный: на 64-битной Windows берём 64-битный PowerShell через Sysnative (иначе нет bcdedit и нельзя ставить драйвер).
+  StrCpy $1 "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
+  IfFileExists "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" 0 +2
+  StrCpy $1 "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
   IfFileExists "$INSTDIR\driver\ComponentizedAudioSample.inf" 0 bogestv0_drv_done
   DetailPrint "Bogestv0: installing virtual audio devices (driver)..."
-  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\driver\install.ps1" -Auto'
+  nsExec::ExecToLog '"$1" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\driver\install.ps1" -Auto'
   Pop $0
   StrCmp $0 "0" bogestv0_drv_done
   IfSilent bogestv0_drv_done
@@ -37,6 +42,7 @@
   bogestv0_drv_secure_en:
     MessageBox MB_OK|MB_ICONEXCLAMATION "The app is installed, but Windows refused to enable test mode for the driver (usually Secure Boot). Turn Secure Boot off in BIOS/UEFI and run install-driver.cmd from the driver folder in the app directory."
   bogestv0_drv_done:
+  Pop $1
   Pop $0
 !macroend
 
@@ -48,9 +54,12 @@
   ; При обновлении программы старый деинсталлятор запускается с /UPDATE: скрипт по этой строке не трогает драйвер.
   ; Командная строка содержит кавычки, поэтому в System::Call она передаётся через регистр, а не текстом.
   StrCpy $2 "$CMDLINE"
-  System::Call 'Kernel32::SetEnvironmentVariable(t "BOGESTV0_UNINST_CMD", t r2)i.r1'
+  StrCpy $1 "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
+  IfFileExists "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" 0 +2
+  StrCpy $1 "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+  System::Call 'Kernel32::SetEnvironmentVariable(t "BOGESTV0_UNINST_CMD", t r2)i.r0'
   DetailPrint "Bogestv0: removing virtual audio devices (driver)..."
-  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\driver\uninstall.ps1" -Auto'
+  nsExec::ExecToLog '"$1" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\driver\uninstall.ps1" -Auto'
   Pop $0
   bogestv0_un_done:
   Pop $2

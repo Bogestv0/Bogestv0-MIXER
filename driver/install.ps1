@@ -10,6 +10,17 @@
 # Коды выхода: 0 готово · 3010 нужна перезагрузка · 20 тестовый режим не включился (чаще всего Secure Boot) · 21 после перезагрузки
 # тестовый режим всё ещё выключен · 1 прочая ошибка. Журнал: %ProgramData%\Bogestv0\driver-setup.log
 param([switch]$Auto, [switch]$FromTask)
+
+# Установщик Tauri 32-битный и запускает 32-битный PowerShell: он не видит bcdedit/pnputil из System32 и не может ставить 64-битный драйвер.
+# Поэтому на 64-битной Windows скрипт сам перезапускается в 64-битном PowerShell (папка Sysnative) с теми же ключами.
+if ([Environment]::Is64BitOperatingSystem -and -not [Environment]::Is64BitProcess) {
+    $sn = Join-Path $env:SystemRoot 'Sysnative\WindowsPowerShell\v1.0\powershell.exe'
+    $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath)
+    if ($Auto) { $a += '-Auto' }
+    if ($FromTask) { $a += '-FromTask' }
+    & $sn @a
+    exit $LASTEXITCODE
+}
 $ErrorActionPreference = 'Stop'
 $here  = Split-Path -Parent $MyInvocation.MyCommand.Path
 $inf   = Join-Path $here 'ComponentizedAudioSample.inf'
