@@ -119,12 +119,13 @@ struct ShmRing {
     // Читает ровно n кадров (нехватку дополняет тишиной). Если trim > 0 и накопилось больше trim + n кадров,
     // самое старое выбрасывается: часы двух сторон расходятся, и запас не должен расти бесконечно.
     // Возвращает, сколько настоящих кадров прочитано.
-    uint32_t pop(float* out, uint32_t n, uint32_t trim = 0) {
+    // trimmed (необязательно): сюда прибавляется, сколько кадров выброшено из-за trim.
+    uint32_t pop(float* out, uint32_t n, uint32_t trim = 0, uint32_t* trimmed = nullptr) {
         uint32_t r = ctl->read_pos.load(std::memory_order_relaxed);
         const uint32_t w = ctl->write_pos.load(std::memory_order_acquire);
         uint32_t av = w - r;
         if (av > cap) { r = w; av = 0; }                    // испорченные позиции: начинаем с чистого
-        if (trim && av > trim + n) { r += av - trim; av = trim; }
+        if (trim && av > trim + n) { if (trimmed) *trimmed += av - trim; r += av - trim; av = trim; }
         const uint32_t m = n < av ? n : av;
         for (uint32_t i = 0; i < m; ++i) {
             const uint32_t idx = (r + i) & (cap - 1);

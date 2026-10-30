@@ -170,6 +170,7 @@ html,body{height:100%;overflow:hidden}
             </sc-for>
           </div>
           <div style="font-size:13px;color:var(--muted)">{{virtualsNote}}</div>
+          <div style="font-size:12px;color:var(--muted);font-family:var(--mono, monospace);line-height:1.5;white-space:pre-line">{{diagText}}</div>
         </div>
       </div>
     </div>
@@ -276,8 +277,26 @@ class Component extends DCLogic {
       : found
         ? 'Драйвер установлен, но движок не смог получить от него память. Подробности в сообщении об ошибке внизу окна. Пока V1–V6 проверяются тест-сигналом на экране «Микшер».'
         : 'Драйвера нет: V1–V6 проверяются тест-сигналом на экране «Микшер». Установка драйвера описана в docs/ЭТАП-6.md (часть 6.3). Для проверки B1 и B2 можно назначить любой выход (например, виртуальный кабель).';
+    // Диагностика колец с запуска движка (для поиска причины хрипа): частота потока в Windows, недогрузки, переполнения, обрезка запаса.
+    // Единицы: миллисекунды звука (кадры / 48).
+    let diagText = '';
+    const dg = via && drv.diag ? drv.diag : null;
+    if (dg) {
+      const ms = (f) => Math.round((f || 0) / 48) + ' мс';
+      const names = ['V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'B1', 'B2'];
+      const lines = [];
+      for (let i = 0; i < 8; i++) {
+        const rate = dg.rate && dg.rate[i];
+        if (!rate) continue;
+        let s = names[i] + ': Windows ' + rate + ' Гц' + (rate !== 48000 ? ' (не 48 000: будет другая высота и треск)' : '');
+        s += ', нехватка звука ' + ms(dg.starved && dg.starved[i]) + ', отброшено ' + ms(dg.drops && dg.drops[i]);
+        if (i < 6) s += ', обрезано запаса ' + ms(dg.trim && dg.trim[i]);
+        lines.push(s);
+      }
+      if (lines.length) diagText = 'Диагностика (с запуска движка; растёт во время хрипа):\n' + lines.join('\n');
+    }
     const used = Object.keys(dev).filter((k) => dev[k]).length;
-    return { devices, slots, virtuals, drvText, drvPill, virtualsNote, foundCount: list.length, usedCount: used, refresh: () => B.send('devices') };
+    return { devices, slots, virtuals, drvText, drvPill, virtualsNote, diagText, foundCount: list.length, usedCount: used, refresh: () => B.send('devices') };
   }
 }
 </script>

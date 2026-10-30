@@ -310,7 +310,17 @@ public:
         for (int i = 0; i < kShmInRings; ++i) o << (i ? "," : "") << ((mk >> (1 + i)) & 1u);
         o << "],\"out\":[";
         for (int i = 0; i < kShmOutRings; ++i) o << (i ? "," : "") << ((mk >> (1 + kShmInRings + i)) & 1u);
-        o << "]}}";
+        // Диагностика колец (с запуска движка): rate = частота, с которой Windows открыла поток (0 = закрыт); starved = кадров заполнено
+        // тишиной (читающий не дождался данных); drops = кадров отброшено (писавший не нашёл места); trim = кадров выброшено движком из запаса.
+        o << "],\"diag\":{\"rate\":[";
+        for (int i = 0; i < kShmRings; ++i) o << (i ? "," : "") << (shm_ ? shm_->header()->reserved[i] : 0u);
+        o << "],\"starved\":[";
+        for (int i = 0; i < kShmRings; ++i) o << (i ? "," : "") << (shm_ ? shm_->ring(i).ctl->starved.load(std::memory_order_relaxed) : 0u);
+        o << "],\"drops\":[";
+        for (int i = 0; i < kShmRings; ++i) o << (i ? "," : "") << (shm_ ? shm_->ring(i).ctl->drops.load(std::memory_order_relaxed) : 0u);
+        o << "],\"trim\":[";
+        for (int i = 0; i < kShmInRings; ++i) o << (i ? "," : "") << drv_trim_[i].load(std::memory_order_relaxed);
+        o << "]}}}";
         return o.str();
     }
 
@@ -416,6 +426,7 @@ private:
     bool driver_found_ = false;
     std::string driver_note_;
     ShmRing shm_in_[kShmInRings], shm_out_[kShmOutRings];
+    std::atomic<uint32_t> drv_trim_[kShmInRings] = {};   // сколько кадров выброшено из запаса колец входов (для диагностики)
     bool drv_was_active_[kShmInRings] = {};        // только аудио-поток
     uint32_t last_driver_beat_ = 0;                // только сторож
     std::atomic<bool> drv_alive_{false};
@@ -601,7 +612,9 @@ private:
                 } else if (shm_ && s.src.load(std::memory_order_relaxed) == SRC_OFF && shm_in_[i - 2].active()) {
                     ShmRing& rg = shm_in_[i - 2];
                     if (!drv_was_active_[i - 2]) { rg.discard(); drv_was_active_[i - 2] = true; }   // поток только что открылся: старое не нужно
-                    rg.pop(t, static_cast<uint32_t>(n), static_cast<uint32_t>(std::max<size_t>(n * 3, 960)));
+                    uint32_t cut = 0;
+                    rg.pop(t, static_cast<uint32_t>(n), static_cast<uint32_t>(std::max<size_t>(n * 3, 960)), &cut);
+                    if (cut) drv_trim_[i - 2].fetch_add(cut, std::memory_order_relaxed);
                 } else {
                     if (i >= 2) drv_was_active_[i - 2] = false;
                     generate(s, i, t, n);

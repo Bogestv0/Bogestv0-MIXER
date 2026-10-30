@@ -355,7 +355,7 @@ static int selftest_driver_mixer() {
             check(drv != nullptr, "драйвер подключился к памяти движка");
             check(m.command("set dev a1 " + dev).empty() && m.slot_ok(2), "ведущее устройство A1 открылось");
             m.command("set strip 3 route 3 1");   // V2 («Музыка») -> B1
-            check(m.state_json().find("\"drv\":{\"shm\":1,\"via\":0,\"found\":0,\"alive\":0,\"in\":[0,0,0,0,0,0],\"out\":[0,0]}") != std::string::npos, "состояние: драйвера пока нет");
+            check(m.state_json().find("\"drv\":{\"shm\":1,\"via\":0,\"found\":0,\"alive\":0,\"in\":[0,0,0,0,0,0],\"out\":[0,0],\"diag\":{\"rate\":[0,0,0,0,0,0,0,0],\"starved\":[0,0,0,0,0,0,0,0],\"drops\":[0,0,0,0,0,0,0,0],\"trim\":[0,0,0,0,0,0]}}") != std::string::npos, "состояние: драйвера пока нет, диагностика колец нулевая");
 
             // «Драйвер»: открывает Input 2 и Output 1, пишет постоянный сигнал в Input 2 и читает Output 1.
             bg::ShmRing in2 = drv->in(1), out1 = drv->out(0);
