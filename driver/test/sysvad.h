@@ -76,7 +76,7 @@ typedef IO_STACK_LOCATION* PIO_STACK_LOCATION;
 struct IRP { struct { NTSTATUS Status; ULONG_PTR Information; } IoStatus; struct { void* SystemBuffer; } AssociatedIrp; IO_STACK_LOCATION sp; };
 inline PIO_STACK_LOCATION IoGetCurrentIrpStackLocation(PIRP i) { return &i->sp; }
 inline void IoCompleteRequest(PIRP, int) {}
-struct MDL { int x; }; typedef MDL* PMDL; typedef void* PEPROCESS; typedef void* PRKPROCESS; struct KAPC_STATE { int x; };
+struct MDL { int x; }; typedef MDL* PMDL; typedef void* PEPROCESS; typedef void* PRKPROCESS; 
 inline PVOID ExAllocatePool2(int, SIZE_T n, ULONG) { return calloc(1, n); }
 inline void ExFreePoolWithTag(PVOID p, ULONG) { free(p); }
 inline PMDL IoAllocateMdl(PVOID, ULONG, bool, bool, PIRP) { return new MDL; }
@@ -87,7 +87,8 @@ inline PVOID MmMapLockedPagesSpecifyCache(PMDL, int, int, PVOID, bool, int) { re
 inline void MmUnmapLockedPages(PVOID, PMDL) {}
 inline PEPROCESS PsGetCurrentProcess() { return (PEPROCESS)1; }
 inline void ObReferenceObject(PEPROCESS) {} inline void ObDereferenceObject(PEPROCESS) {}
-inline void KeStackAttachProcess(PRKPROCESS, KAPC_STATE*) {} inline void KeUnstackDetachProcess(KAPC_STATE*) {}
+#define NTKERNELAPI
+extern "C" inline void KeStackAttachProcess(PRKPROCESS, PVOID) {} extern "C" inline void KeUnstackDetachProcess(PVOID) {}
 static DEVICE_OBJECT g_fakeDev;
 inline NTSTATUS IoCreateDeviceSecure(PDRIVER_OBJECT, ULONG, UNICODE_STRING*, ULONG, ULONG, bool, UNICODE_STRING*, void*, PDEVICE_OBJECT* d) { *d = &g_fakeDev; return 0; }
 inline NTSTATUS IoCreateSymbolicLink(UNICODE_STRING*, UNICODE_STRING*) { return 0; }

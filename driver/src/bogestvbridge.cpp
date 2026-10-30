@@ -12,7 +12,13 @@
 //
 // Раскладку нужно держать в точном соответствии с engine/shm.h (размеры проверяются C_ASSERT).
 #include "sysvad.h"
-#include <ntifs.h>                        // KAPC_STATE, KeStackAttachProcess, KeUnstackDetachProcess
+
+// ntifs.h здесь подключать нельзя (конфликтует с типами sysvad.h/portcls: PEPROCESS, PETHREAD и др.), поэтому две нужные функции
+// объявлены вручную. Настоящая структура KAPC_STATE занимает 48 байт на x64, берём буфер с запасом (64 байта).
+extern "C" {
+NTKERNELAPI VOID KeStackAttachProcess(_Inout_ PRKPROCESS Process, _Out_ PVOID ApcState);
+NTKERNELAPI VOID KeUnstackDetachProcess(_In_ PVOID ApcState);
+}
 #include <wdmsec.h>
 #include "bogestvbridge.h"
 #include "bogestv_ioctl.h"
@@ -275,7 +281,7 @@ VOID BogestvCapture(_In_ LONG Ring_, _Inout_ BYTE* Dma, _In_ ULONG DmaSize, _In_
 static VOID UnmapOwner()
 {
     if (!g_OwnerProc) return;
-    KAPC_STATE apc;
+    ULONG_PTR apc[8];                                    // под KAPC_STATE (см. выше)
     const BOOLEAN attach = (PsGetCurrentProcess() != g_OwnerProc);
     if (attach) KeStackAttachProcess((PRKPROCESS)g_OwnerProc, &apc);
     if (g_UserVa) MmUnmapLockedPages(g_UserVa, g_Mdl);
