@@ -1,0 +1,63 @@
+name: Driver
+
+on:
+  workflow_dispatch:
+  push:
+    paths: ['driver/**', '.github/workflows/driver.yml']
+
+env:
+  SYSVAD_COMMIT: f4c1ff842b6a0001152f44cb61788b216a1c7627
+
+jobs:
+  build:
+    runs-on: windows-2025-vs2026
+    steps:
+      - name: Наш репозиторий
+        uses: actions/checkout@v4
+        with:
+          path: ours
+
+      - name: Пример Microsoft (Windows-driver-samples), закреплённая версия
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/Windows-driver-samples
+          ref: ${{ env.SYSVAD_COMMIT }}
+          path: wds
+          submodules: recursive
+
+      - name: Наши правки
+        shell: pwsh
+        run: python ours/driver/patch_sysvad.py wds
+
+      - name: Пакеты WDK (NuGet)
+        shell: pwsh
+        run: nuget restore wds\packages.config -PackagesDirectory wds\packages\
+
+      - name: Сборка
+        shell: pwsh
+        working-directory: wds
+        run: .\Build-Samples.ps1 -Samples 'audio.sysvad' -Configurations Release -Platforms x64 -Verbose
+
+      - name: Сбор файлов драйвера
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          $files = Get-ChildItem wds\audio\sysvad -Recurse -File -Include *.sys,*.inf,*.cat,*.dll,*.cer |
+                   Where-Object { $_.FullName -match '\\x64\\Release\\' -and $_.FullName -notmatch '\\obj\\' }
+          foreach ($f in $files) { Copy-Item $f.FullName (Join-Path out $f.Name) -Force; Write-Host $f.FullName }
+          if (-not $files) { Write-Host 'Файлов драйвера не найдено, смотрите журнал сборки.' }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bogestv0-driver-x64
+          path: out
+          if-no-files-found: warn
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: driver-logs
+          path: wds/_logs
+          if-no-files-found: warn
