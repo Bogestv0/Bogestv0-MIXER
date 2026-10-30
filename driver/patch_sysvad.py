@@ -13,6 +13,13 @@
 import pathlib
 import sys
 
+# Консоль Windows на сборочной машине в cp1252 и не печатает русский текст: принудительно UTF-8.
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 INX = "audio/sysvad/TabletAudioSample/ComponentizedAudioSample.inx"
 
 # (строка в разделе [Strings] как в примере, наша строка)
