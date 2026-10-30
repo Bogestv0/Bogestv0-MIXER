@@ -14,6 +14,7 @@ a{text-decoration:none}
 html,body{height:100%;overflow:hidden}
 </style>
 <script src="dc.js"></script>
+<script src="bridge.js"></script>
 </head>
 <body>
 <template id="tpl">
@@ -49,10 +50,10 @@ html,body{height:100%;overflow:hidden}
       <div style="min-width:0">
         <h2 style="margin:0 0 2px;font:600 12px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Сцены</h2>
         <div style="font:600 18px/1.2 'Unbounded',sans-serif;margin-bottom:3px">Куда идёт звук?</div>
-        <div style="font-size:13px;color:var(--muted)">Игры и музыка в наушники и на стрим; Discord только в наушники; оба микрофона на стрим и звонки.</div>
+        <div style="font-size:13px;color:var(--muted)">{{sceneDesc}}</div>
       </div>
       <div style="display:flex;gap:10px">
-        <sc-for list="{{scenes}}" as="sc"><button style="min-height:44px;padding:9px 18px;border-radius:12px;font:500 14px 'Onest',sans-serif;{{sc.style}}">{{sc.name}}</button></sc-for>
+        <sc-for list="{{scenes}}" as="sc"><button data-act="scene" data-id="{{sc.id}}" style="min-height:44px;padding:9px 18px;border-radius:12px;font:500 14px 'Onest',sans-serif;{{sc.style}}">{{sc.name}}</button></sc-for>
       </div>
     </div>
 
@@ -77,15 +78,15 @@ html,body{height:100%;overflow:hidden}
                     <span style="font:500 12px 'JetBrains Mono',monospace;color:var(--signal)">{{s.nsName}}</span>
                   </div>
                   <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px">
-                    <button aria-pressed="{{s.n0On}}" style="flex:1;height:28px;border-radius:8px;padding:0;font:500 11px 'JetBrains Mono',monospace;{{s.n0}}">Выкл</button>
-                    <button aria-pressed="{{s.n1On}}" style="flex:1;height:28px;border-radius:8px;padding:0;font:500 11px 'JetBrains Mono',monospace;{{s.n1}}">Мяг</button>
-                    <button aria-pressed="{{s.n2On}}" style="flex:1;height:28px;border-radius:8px;padding:0;font:500 11px 'JetBrains Mono',monospace;{{s.n2}}">Сил</button>
-                    <button aria-pressed="{{s.n3On}}" style="flex:1;height:28px;border-radius:8px;padding:0;font:500 11px 'JetBrains Mono',monospace;{{s.n3}}">Макс</button>
+                    <button data-act="ns" data-i="{{s.i}}" data-v="0" aria-pressed="{{s.n0On}}" style="flex:1;height:28px;border-radius:8px;padding:0;font:500 11px 'JetBrains Mono',monospace;{{s.n0}}">Выкл</button>
+                    <button data-act="ns" data-i="{{s.i}}" data-v="1" aria-pressed="{{s.n1On}}" style="flex:1;height:28px;border-radius:8px;padding:0;font:500 11px 'JetBrains Mono',monospace;{{s.n1}}">Мяг</button>
+                    <button data-act="ns" data-i="{{s.i}}" data-v="2" aria-pressed="{{s.n2On}}" style="flex:1;height:28px;border-radius:8px;padding:0;font:500 11px 'JetBrains Mono',monospace;{{s.n2}}">Сил</button>
+                    <button data-act="ns" data-i="{{s.i}}" data-v="3" aria-pressed="{{s.n3On}}" style="flex:1;height:28px;border-radius:8px;padding:0;font:500 11px 'JetBrains Mono',monospace;{{s.n3}}">Макс</button>
                   </div>
                 </div>
               </sc-if>
               <sc-if value="{{s.notMic}}">
-                <div style="display:flex;flex-direction:column;gap:2px">
+                <div data-act="src" data-i="{{s.i}}" title="Нажмите: тестовый сигнал вместо программы (выкл → синус → шум)" style="display:flex;flex-direction:column;gap:2px;cursor:pointer">
                   <h2 style="margin:0;font:600 11px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Источник</h2>
                   <span style="font:500 14px 'Onest',sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{s.source}}</span>
                 </div>
@@ -105,28 +106,28 @@ html,body{height:100%;overflow:hidden}
             <div style="display:flex;flex-direction:column;gap:6px">
               <h2 style="margin:0;font:600 11px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Отправить на</h2>
               <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px">
-                <button aria-pressed="{{s.a1On}}" style="min-height:34px;border-radius:10px;padding:0;font:500 13px 'JetBrains Mono',monospace;{{s.a1}}">A1</button>
-                <button aria-pressed="{{s.a2On}}" style="min-height:34px;border-radius:10px;padding:0;font:500 13px 'JetBrains Mono',monospace;{{s.a2}}">A2</button>
-                <button aria-pressed="{{s.a3On}}" style="min-height:34px;border-radius:10px;padding:0;font:500 13px 'JetBrains Mono',monospace;{{s.a3}}">A3</button>
-                <button aria-pressed="{{s.b1On}}" style="min-height:34px;border-radius:10px;padding:0;font:500 13px 'JetBrains Mono',monospace;{{s.b1}}">B1</button>
-                <button aria-pressed="{{s.b2On}}" style="min-height:34px;border-radius:10px;padding:0;font:500 13px 'JetBrains Mono',monospace;{{s.b2}}">B2</button>
+                <button data-act="route" data-i="{{s.i}}" data-k="0" aria-pressed="{{s.a1On}}" style="min-height:34px;border-radius:10px;padding:0;font:500 13px 'JetBrains Mono',monospace;{{s.a1}}">A1</button>
+                <button data-act="route" data-i="{{s.i}}" data-k="1" aria-pressed="{{s.a2On}}" style="min-height:34px;border-radius:10px;padding:0;font:500 13px 'JetBrains Mono',monospace;{{s.a2}}">A2</button>
+                <button data-act="route" data-i="{{s.i}}" data-k="2" aria-pressed="{{s.a3On}}" style="min-height:34px;border-radius:10px;padding:0;font:500 13px 'JetBrains Mono',monospace;{{s.a3}}">A3</button>
+                <button data-act="route" data-i="{{s.i}}" data-k="3" aria-pressed="{{s.b1On}}" style="min-height:34px;border-radius:10px;padding:0;font:500 13px 'JetBrains Mono',monospace;{{s.b1}}">B1</button>
+                <button data-act="route" data-i="{{s.i}}" data-k="4" aria-pressed="{{s.b2On}}" style="min-height:34px;border-radius:10px;padding:0;font:500 13px 'JetBrains Mono',monospace;{{s.b2}}">B2</button>
               </div>
             </div>
 
             <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:6px">
-              <div style="text-align:center;font:500 13px 'JetBrains Mono',monospace;color:var(--signal)">{{s.tag}} · {{s.dbText}}</div>
+              <div data-db="{{s.i}}" style="text-align:center;font:500 13px 'JetBrains Mono',monospace;color:var(--signal)">{{s.tag}} · {{s.dbText}}</div>
               <div style="flex:1;min-height:0;display:flex;gap:8px;padding:0 14px">
-                <div style="width:8px;border-radius:4px;position:relative;overflow:hidden;background:linear-gradient(to top,var(--ok) 0%,var(--ok) 60%,var(--m-mid) 82%,var(--bad) 100%)"><div style="position:absolute;left:0;right:0;top:0;height:{{s.meterL}}%;background:var(--surface-2)"></div></div>
-                <div style="flex:1;position:relative"><div style="position:absolute;left:50%;top:0;bottom:0;width:4px;margin-left:-2px;border-radius:2px;background:var(--line)"></div>
-                  <div style="position:absolute;left:-4px;right:-4px;bottom:calc({{s.pos}}% - 17px);height:34px;border-radius:10px;background:var(--surface);border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.14);box-sizing:border-box;display:flex;align-items:center;justify-content:center;opacity:{{s.capOpacity}}"><div style="width:60%;height:3px;border-radius:2px;background:var(--signal)"></div></div>
+                <div style="width:8px;border-radius:4px;position:relative;overflow:hidden;background:linear-gradient(to top,var(--ok) 0%,var(--ok) 60%,var(--m-mid) 82%,var(--bad) 100%)"><div data-meter="{{s.i}}l" style="position:absolute;left:0;right:0;top:0;height:{{s.meterL}}%;background:var(--surface-2)"></div></div>
+                <div data-fader="{{s.i}}" title="Двойной щелчок: 0 дБ" style="flex:1;position:relative;touch-action:none;cursor:ns-resize"><div style="position:absolute;left:50%;top:0;bottom:0;width:4px;margin-left:-2px;border-radius:2px;background:var(--line)"></div>
+                  <div data-cap="{{s.i}}" style="position:absolute;left:-4px;right:-4px;bottom:calc({{s.pos}}% - 17px);height:34px;border-radius:10px;background:var(--surface);border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.14);box-sizing:border-box;display:flex;align-items:center;justify-content:center;opacity:{{s.capOpacity}}"><div style="width:60%;height:3px;border-radius:2px;background:var(--signal)"></div></div>
                 </div>
-                <div style="width:8px;border-radius:4px;position:relative;overflow:hidden;background:linear-gradient(to top,var(--ok) 0%,var(--ok) 60%,var(--m-mid) 82%,var(--bad) 100%)"><div style="position:absolute;left:0;right:0;top:0;height:{{s.meterR}}%;background:var(--surface-2)"></div></div>
+                <div style="width:8px;border-radius:4px;position:relative;overflow:hidden;background:linear-gradient(to top,var(--ok) 0%,var(--ok) 60%,var(--m-mid) 82%,var(--bad) 100%)"><div data-meter="{{s.i}}r" style="position:absolute;left:0;right:0;top:0;height:{{s.meterR}}%;background:var(--surface-2)"></div></div>
               </div>
             </div>
 
             <div style="display:flex;gap:6px">
-              <button aria-pressed="{{s.muted}}" style="flex:1;min-height:38px;border-radius:12px;font:500 13px 'Onest',sans-serif;{{s.muteStyle}}">Mute</button>
-              <button aria-pressed="false" style="flex:1;min-height:38px;border-radius:12px;font:500 13px 'Onest',sans-serif;background:none;color:var(--fg);border:1px solid var(--line)">Solo</button>
+              <button data-act="mute" data-i="{{s.i}}" aria-pressed="{{s.muted}}" style="flex:1;min-height:38px;border-radius:12px;font:500 13px 'Onest',sans-serif;{{s.muteStyle}}">Mute</button>
+              <button data-act="solo" data-i="{{s.i}}" aria-pressed="{{s.soloOn}}" style="flex:1;min-height:38px;border-radius:12px;font:500 13px 'Onest',sans-serif;{{s.soloStyle}}">Solo</button>
             </div>
           </div>
         </sc-for>
@@ -139,8 +140,13 @@ html,body{height:100%;overflow:hidden}
 <script>
 class Component extends DCLogic {
   renderVals() {
+    const B = window.Bridge;
+    const S = B.settings;
+    const st = B.state;                       // состояние движка (null, если не подключён)
+    const M = B.meters;
     const pos = (db) => Math.max(0, Math.min(100, (db + 48) / 60 * 100));
-    const fmt = (db) => (db > 0 ? '+' : '') + db.toFixed(1) + ' дБ';
+    const fmt = (db) => (db > 0 ? '+' : '') + Number(db).toFixed(1) + ' дБ';
+    const lvl = (lin) => Math.round(100 - Math.max(0, Math.min(100, (20 * Math.log10(Math.max(lin, 1e-6)) + 60) / 60 * 100)));
     const chip = (on, tone) => on
       ? 'background:var(--' + tone + '-soft);color:var(--' + tone + ');border:1px solid var(--' + tone + ');box-shadow:0 0 0 1px var(--' + tone + ')'
       : 'background:none;color:var(--muted);border:1px solid var(--line)';
@@ -148,46 +154,46 @@ class Component extends DCLogic {
       ? 'background:var(--signal);color:var(--signal-ink);border:1px solid var(--signal)'
       : 'background:var(--surface);color:var(--fg);border:1px solid var(--line)';
     const nsNames = ['Выкл', 'Мягкое', 'Сильное', 'Максимум'];
-    const R = (a1, a2, a3, b1, b2) => [a1, a2, a3, b1, b2];
-    const defs = [
-      { name: 'Микрофон 1', tag: 'HW1', mic: true, ns: 2, db: -3, l: 62, r: 58, k1: ['Гейт', .35], k2: ['Компр.', .55], r5: R(0, 0, 0, 1, 1) },
-      { name: 'Микрофон 2', tag: 'HW2', mic: true, ns: 1, db: -5, l: 48, r: 47, k1: ['Гейт', .4], k2: ['Компр.', .5], r5: R(0, 0, 0, 1, 1) },
-      { name: 'Игры', tag: 'V1', ml: 14, src: 'Все игры', db: -6, l: 74, r: 70, k1: ['Бас', .5], k2: ['ВЧ', .5], r5: R(0, 1, 0, 1, 0) },
-      { name: 'Музыка', tag: 'V2', src: 'Spotify', db: -14, l: 46, r: 44, k1: ['Бас', .62], k2: ['ВЧ', .45], r5: R(0, 1, 0, 1, 0) },
-      { name: 'Discord', tag: 'V3', src: 'Discord', db: -4, l: 55, r: 51, k1: ['Бас', .4], k2: ['ВЧ', .58], r5: R(0, 1, 0, 0, 0) },
-      { name: 'Браузер', tag: 'V4', src: 'Chrome, YouTube', db: -9, l: 38, r: 36, k1: ['Бас', .5], k2: ['ВЧ', .5], r5: R(0, 1, 0, 0, 0) },
-      { name: 'Донаты', tag: 'V5', src: 'Оповещения о донатах', db: -8, l: 30, r: 28, k1: ['Бас', .5], k2: ['ВЧ', .5], r5: R(0, 1, 0, 1, 0) },
-      { name: 'Браузер 2', tag: 'V6', src: 'Firefox', db: -12, l: 22, r: 21, k1: ['Бас', .5], k2: ['ВЧ', .5], r5: R(0, 1, 0, 0, 0) }
-    ];
-    const strips = defs.map((d) => {
+    const srcNames = ['', 'Тест: синус', 'Тест: шум', 'Тест: файл'];
+    const scene = S.scenes.find((x) => x.id === S.active);
+    const strips = S.strips.map((d, i) => {
+      const e = st ? st.strips[i] : { g: [-3, -5, -6, -14, -4, -9, -8, -12][i], m: 0, s: 0, r: scene ? scene.routes[i] : 0, src: 0 };
+      const isMic = i < 2;
+      const ns = isMic ? (S.ns[i] || 0) : 0;
       const o = {
-        name: d.name, tag: d.tag, ml: d.ml || 0, source: d.src || '', isMic: !!d.mic, notMic: !d.mic,
-        nsName: nsNames[d.ns || 0],
-        k1Label: d.k1[0], k1Deg: Math.round(d.k1[1] * 270), k1Rot: Math.round(-135 + d.k1[1] * 270),
-        k2Label: d.k2[0], k2Deg: Math.round(d.k2[1] * 270), k2Rot: Math.round(-135 + d.k2[1] * 270),
-        dbText: fmt(d.db), pos: pos(d.db), capOpacity: 1,
-        meterL: Math.round(100 - d.l), meterR: Math.round(100 - d.r),
-        muted: false, muteStyle: 'background:none;color:var(--fg);border:1px solid var(--line)'
+        i, name: d.name, tag: d.tag, ml: i === 2 ? 14 : 0,
+        source: e.src ? srcNames[e.src] : d.source, isMic, notMic: !isMic,
+        nsName: nsNames[ns],
+        k1Label: isMic ? 'Гейт' : 'Бас', k1Deg: 135, k1Rot: 0,
+        k2Label: isMic ? 'Компр.' : 'ВЧ', k2Deg: 135, k2Rot: 0,
+        dbText: fmt(e.g), pos: pos(e.g), capOpacity: 1,
+        meterL: M ? lvl(M.s[i][0]) : 100, meterR: M ? lvl(M.s[i][1]) : 100,
+        muted: !!e.m, soloOn: !!e.s,
+        muteStyle: e.m ? 'background:var(--bad);color:#fff;border:1px solid var(--bad)' : 'background:none;color:var(--fg);border:1px solid var(--line)',
+        soloStyle: e.s ? 'background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn)' : 'background:none;color:var(--fg);border:1px solid var(--line)'
       };
-      [0, 1, 2, 3].forEach((i) => { o['n' + i] = nsChip(d.ns === i); o['n' + i + 'On'] = d.ns === i; });
-      ['a1', 'a2', 'a3', 'b1', 'b2'].forEach((k, i) => { o[k] = chip(!!d.r5[i], i < 3 ? 'signal' : 'warn'); o[k + 'On'] = !!d.r5[i]; });
+      [0, 1, 2, 3].forEach((k) => { o['n' + k] = nsChip(ns === k); o['n' + k + 'On'] = ns === k; });
+      ['a1', 'a2', 'a3', 'b1', 'b2'].forEach((key, k) => { const on = !!((e.r >> k) & 1); o[key] = chip(on, k < 3 ? 'signal' : 'warn'); o[key + 'On'] = on; });
       return o;
     });
     const navDefs = [
-      ['Микшер', 'M6 4v16M12 4v16M18 4v16', 'main.html', 1], ['Выходы', 'M4 9v6h4l5 4V5L8 9H4zM16.5 8.5a5 5 0 0 1 0 7', '', 0],
+      ['Микшер', 'M6 4v16M12 4v16M18 4v16', 'main.html', 1], ['Выходы', 'M4 9v6h4l5 4V5L8 9H4zM16.5 8.5a5 5 0 0 1 0 7', 'outputs.html', 0],
       ['Сцены', 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z', 'scenes.html', 0], ['Эффекты', 'M3 12h3l2-6 4 12 3-9 2 3h4', 'effects.html', 0],
-      ['Запись', 'M12 4a8 8 0 1 0 0 16a8 8 0 1 0 0-16z', 'record.html', 0], ['Устройства', 'M7 3h10a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3zM12 11a3 3 0 1 0 0 6a3 3 0 1 0 0-6z', '', 0],
+      ['Запись', 'M12 4a8 8 0 1 0 0 16a8 8 0 1 0 0-16z', 'record.html', 0], ['Устройства', 'M7 3h10a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3zM12 11a3 3 0 1 0 0 6a3 3 0 1 0 0-6z', 'devices.html', 0],
       ['Настройки', 'M12 2v3M12 19v3M2 12h3M19 12h3M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6z', 'strips.html', 0]
     ];
-    const nav = navDefs.map((n) => ({ name: n[0], d: n[1], href: n[2] || '#', style: n[3] ? 'background:var(--signal-soft);color:var(--signal);font-weight:600' : 'background:none;color:var(--muted)' }));
-    const scenes = ['Играю и стримлю', 'Звонок', 'Всё в колонки'].map((n, i) => ({
-      name: n, style: i === 0 ? 'background:var(--signal);color:var(--signal-ink);border:1px solid var(--signal)' : 'background:var(--surface);color:var(--signal);border:1px solid transparent'
+    const nav = navDefs.map((n) => ({ name: n[0], d: n[1], href: n[2], style: n[3] ? 'background:var(--signal-soft);color:var(--signal);font-weight:600' : 'background:none;color:var(--muted)' }));
+    const scenes = S.scenes.map((sc) => ({
+      id: sc.id, name: sc.name,
+      style: sc.id === S.active ? 'background:var(--signal);color:var(--signal-ink);border:1px solid var(--signal)' : 'background:var(--surface);color:var(--signal);border:1px solid transparent'
     }));
-    return { strips, nav, scenes };
+    const sceneDesc = scene ? scene.desc : 'Свои настройки: маршруты изменены вручную. Выберите сцену, чтобы вернуть готовый набор.';
+    return { strips, nav, scenes, sceneDesc };
   }
 }
 </script>
 <script>DC.mount(Component);</script>
 <script src="app.js"></script>
+<script src="mixer.js"></script>
 </body>
 </html>

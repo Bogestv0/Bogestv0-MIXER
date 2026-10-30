@@ -7,11 +7,11 @@
 #endif
 #define MINIAUDIO_IMPLEMENTATION
 #define MA_NO_ENCODING
-#define MA_NO_DECODING
 #define MA_NO_GENERATION
 #include "third_party/miniaudio.h"
 
 #include "dsp.h"
+#include "serve.h"
 
 #include <chrono>
 #include <cstdio>
@@ -24,9 +24,11 @@
 #ifdef _WIN32
 #include <conio.h>
 #include <windows.h>
+#include <fcntl.h>
+#include <io.h>
 #endif
 
-static const char* VERSION = "0.0.4";
+static const char* VERSION = "0.1.0";
 
 struct Engine {
     std::atomic<float> gain_lin{1.0f};
@@ -55,7 +57,8 @@ static void usage() {
     std::printf(
         "Bogestv0 MIXER engine %s\n\n"
         "  engine.exe --list                    список устройств\n"
-        "  engine.exe --in N --out M [опции]    микрофон N -> наушники M\n\n"
+        "  engine.exe --in N --out M [опции]    микрофон N -> наушники M\n"
+        "  engine.exe --serve                   режим микшера для окна (команды в stdin)\n\n"
         "Опции:\n"
         "  --gain ДБ      усиление 0..30 (по умолчанию 0)\n"
         "  --period N     размер блока: 128, 256, 512 (по умолчанию 128)\n"
@@ -119,6 +122,7 @@ int main(int argc, char** argv) {
 #endif
     int in_idx = -1, out_idx = -1, period = 128, rate = 48000;
     float gain_db = 0.0f;
+    bool serve = false;
     bool list = false, exclusive = false, exclusive_out = false;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
@@ -127,6 +131,7 @@ int main(int argc, char** argv) {
             return argv[++i];
         };
         if (a == "--list") list = true;
+        else if (a == "--serve") serve = true;
         else if (a == "--in") in_idx = std::atoi(next("--in"));
         else if (a == "--out") out_idx = std::atoi(next("--out"));
         else if (a == "--gain") gain_db = static_cast<float>(std::atof(next("--gain")));
@@ -137,7 +142,7 @@ int main(int argc, char** argv) {
         else if (a == "--selftest") return selftest();
         else { usage(); return a == "--help" || a == "-h" ? 0 : 2; }
     }
-    if (!list && (in_idx < 0 || out_idx < 0)) { usage(); return 2; }
+    if (!list && !serve && (in_idx < 0 || out_idx < 0)) { usage(); return 2; }
     if (period != 128 && period != 256 && period != 512) { std::fprintf(stderr, "--period: 128, 256 или 512\n"); return 2; }
     if (rate != 44100 && rate != 48000) { std::fprintf(stderr, "--rate: 44100 или 48000\n"); return 2; }
     gain_db = std::max(0.0f, std::min(30.0f, gain_db));
@@ -150,6 +155,15 @@ int main(int argc, char** argv) {
     if (r != MA_SUCCESS) r = ma_context_init(nullptr, 0, &cc, &ctx);  // для проверки на не-Windows
 #endif
     if (r != MA_SUCCESS) { std::fprintf(stderr, "Не удалось открыть звуковую систему (код %d)\n", r); return 1; }
+
+    if (serve) {
+#ifdef _WIN32
+        _setmode(_fileno(stdout), _O_BINARY);
+#endif
+        int rc = bg::run_server(ctx);
+        ma_context_uninit(&ctx);
+        return rc;
+    }
 
     DevList dl;
     if (!enumerate(ctx, dl)) { std::fprintf(stderr, "Не удалось получить список устройств\n"); return 1; }

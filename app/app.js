@@ -147,6 +147,53 @@
     const due = Date.now() - store.get('lastCheck', 0) > CHECK_EVERY_MS;
     if (T && store.get('autoUpdate', true) && due) checkForUpdates(false);
   }
+
+  /* ---------- состояние движка в боковой панели и сообщения об ошибках ---------- */
+  function paintEngine() {
+    const B = window.Bridge;
+    if (!B) return;
+    const dot = document.querySelector('[data-eng-dot], span[style*="width:7px;height:7px"]');
+    if (!dot) return;
+    dot.setAttribute('data-eng-dot', '');
+    const badge = dot.parentElement, info = badge.nextElementSibling;
+    const st = B.state;
+    let tone = 'ok', text = 'Движок работает', sub = '';
+    if (B.mode === 'none') { tone = 'warn'; text = 'Движок не подключён'; sub = 'откройте программу<br>через установщик'; }
+    else if (!B.connected || !st) { tone = 'warn'; text = 'Движок запускается…'; sub = 'подождите секунду'; }
+    else if (!st.running) { tone = 'warn'; text = 'Нет выхода A'; sub = 'назначьте устройство<br>на экране «Устройства»'; }
+    else sub = Math.round(st.rate / 1000) + ' кГц · блок 128 смп<br>буфер ~' + Number(st.ms).toFixed(1) + ' мс';
+    badge.style.background = 'var(--' + tone + '-soft)';
+    badge.style.color = 'var(--' + tone + ')';
+    dot.style.background = 'var(--' + tone + ')';
+    badge.replaceChildren(dot, document.createTextNode(text));
+    if (info) info.innerHTML = sub;
+  }
+
+  let toastTimer = null;
+  function toast(msg) {
+    let t = document.getElementById('toast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'toast';
+      t.setAttribute('role', 'status');
+      t.style.cssText = 'position:fixed;right:20px;bottom:20px;max-width:420px;padding:12px 16px;border-radius:14px;background:var(--bad);color:#fff;font:500 14px/1.4 Onest,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.3);z-index:60';
+      document.body.append(t);
+    }
+    t.textContent = msg;
+    t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.hidden = true; }, 7000);
+  }
+
+  if (window.Bridge) {
+    window.Bridge.on((type) => {
+      if (type === 'state' || type === 'conn') paintEngine();
+      if (type === 'err' && window.Bridge.lastError) toast(window.Bridge.lastError);
+    });
+    document.addEventListener('dc-rendered', paintEngine);
+    paintEngine();
+  }
+
   document.addEventListener('dc-rendered', () => { fixLinks(); bindSettings(); });
   init();
   setInterval(() => { if (T && store.get('autoUpdate', true) && state !== 'installing') checkForUpdates(false); }, CHECK_EVERY_MS);

@@ -61,6 +61,8 @@
       document.dispatchEvent(new CustomEvent('dc-rendered'));
     };
     inst._render();
+    window.__dc = inst;
+    return inst;
   }
 
   window.DCLogic = DCLogic;

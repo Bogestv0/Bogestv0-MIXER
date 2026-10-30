@@ -14,6 +14,7 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--signal);outline-off
 html,body{height:100%;overflow:hidden}
 </style>
 <script src="dc.js"></script>
+<script src="bridge.js"></script>
 </head>
 <body>
 <template id="tpl">
@@ -90,15 +91,15 @@ html,body{height:100%;overflow:hidden}
         <div style="font:600 20px/1.2 var(--f-display);margin-bottom:4px">Подключи устройство к микшеру</div>
         <div style="font-size:13px;color:var(--muted)">Нажми на слот у нужного устройства. Громкость настраивается на странице «Микшер».</div>
       </div>
-      <button style="min-height:44px;padding:9px 18px;border-radius:12px;border:1px solid var(--signal);background:var(--signal);color:var(--signal-ink);font:500 14px var(--f-body)">Обновить список</button>
+      <button onClick="{{refresh}}" style="min-height:44px;padding:9px 18px;border-radius:12px;border:1px solid var(--signal);background:var(--signal);color:var(--signal-ink);font:500 14px var(--f-body)">Обновить список</button>
     </div>
 
     <div style="flex:1;min-height:0;display:flex;gap:14px">
 
       <!-- DETECTED DEVICES -->
-      <div style="flex:1.7;min-width:0;background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px">
+      <div style="flex:1.7;min-width:0;min-height:0;background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px">
         <h2 style="margin:0;font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Найденные устройства</h2>
-        <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:8px">
           <sc-for list="{{devices}}" as="d">
             <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:14px;background:{{d.rowBg}};border:1px solid {{d.rowBorder}}">
               <div style="flex:0 0 40px;height:40px;border-radius:12px;background:var(--surface);display:flex;align-items:center;justify-content:center;color:var(--muted)">
@@ -129,9 +130,9 @@ html,body{height:100%;overflow:hidden}
       </div>
 
       <!-- SLOTS + VIRTUAL -->
-      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:14px">
+      <div style="flex:1;min-width:0;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:14px">
 
-        <div style="background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px">
+        <div style="flex:0 0 auto;background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px">
           <h2 style="margin:0;font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Слоты микшера</h2>
           <div style="display:flex;flex-direction:column;gap:8px">
             <sc-for list="{{slots}}" as="s">
@@ -152,10 +153,10 @@ html,body{height:100%;overflow:hidden}
           </div>
         </div>
 
-        <div style="flex:1;min-height:0;background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px">
+        <div style="flex:0 0 auto;background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px">
           <div style="display:flex;justify-content:space-between;align-items:center">
             <h2 style="margin:0;font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Виртуальные устройства Bogestv0</h2>
-            <span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 10px;border-radius:99px;background:var(--ok-soft);color:var(--ok)">Драйвер установлен</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 10px;border-radius:99px;background:var(--warn-soft);color:var(--warn)">Драйвер: этап 6</span>
           </div>
           <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
             <sc-for list="{{virtuals}}" as="v">
@@ -168,7 +169,7 @@ html,body{height:100%;overflow:hidden}
               </div>
             </sc-for>
           </div>
-          <div style="font-size:13px;color:var(--muted)">V1–V4 в Windows выбираются как устройство вывода для программ. B1 и B2 появляются в OBS и Discord как микрофоны.</div>
+          <div style="font-size:13px;color:var(--muted)">Пока драйвера нет, V1–V6 проверяются тест-сигналом на экране «Микшер». Для проверки B1 и B2 можно назначить любой выход (например, виртуальный кабель).</div>
         </div>
       </div>
     </div>
@@ -180,84 +181,83 @@ html,body{height:100%;overflow:hidden}
 class Component extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { slots: { hw1: 'mic1', a1: 'spk', a2: 'hp', a3: null } };
+    Bridge.on((t) => { if ((t === 'state' || t === 'devices' || t === 'conn') && window.__dc) window.__dc.setState({}); });
   }
 
   renderVals() {
-    const st = this.state;
-    const devs = [
-      { id: 'mic1', kind: 'in',  icon: 'mic', name: 'Микрофон (High Definition Audio)', sub: 'вход · 48 кГц · 1 канал' },
-      { id: 'mic2', kind: 'in',  icon: 'mic', name: 'USB Microphone',                   sub: 'вход · 48 кГц · 1 канал' },
-      { id: 'spk',  kind: 'out', icon: 'spk', name: 'Динамики (Realtek)',               sub: 'выход · 48 кГц · 2 канала' },
-      { id: 'hp',   kind: 'out', icon: 'hp',  name: 'USB PnP Audio Device',             sub: 'выход · 48 кГц · 2 канала' },
-      { id: 'hdmi', kind: 'out', icon: 'spk', name: 'Монитор (HDMI)',                   sub: 'выход · 48 кГц · 2 канала' },
-      { id: 'bt',   kind: 'out', icon: 'hp',  name: 'Bluetooth-наушники',               sub: 'выход · 44.1 кГц · 2 канала' }
-    ];
-    const slotDefs = [
-      { key: 'hw1', tag: 'HW1', role: 'Железный вход · микрофон', tone: 'warn' },
-      { key: 'a1',  tag: 'A1',  role: 'Колонки',  tone: 'signal' },
-      { key: 'a2',  tag: 'A2',  role: 'Наушники', tone: 'signal' },
-      { key: 'a3',  tag: 'A3',  role: 'Запасной', tone: 'signal' }
-    ];
-    const label = { hw1: 'HW1', a1: 'A1', a2: 'A2', a3: 'A3' };
-    const slotOf = (id) => Object.keys(st.slots).find((k) => st.slots[k] === id) || null;
+    const B = window.Bridge;
+    const st = B.state;
+    const dev = st ? st.dev : {};
+    const okm = st ? st.ok : {};
+    const label = { hw1: 'HW1', hw2: 'HW2', a1: 'A1', a2: 'A2', a3: 'A3', b1: 'B1', b2: 'B2' };
+    const list = [].concat(
+      (B.devices.cap || []).map((d) => ({ ...d, kind: 'in' })),
+      (B.devices.play || []).map((d) => ({ ...d, kind: 'out' }))
+    );
+    const isHp = (n) => /науш|headphone|headset|hands-free|гарнитур/i.test(n);
 
-    const assign = (key, id) => () => {
-      const next = { ...st.slots };
-      Object.keys(next).forEach((k) => { if (next[k] === id) next[k] = null; });
-      next[key] = st.slots[key] === id ? null : id;
-      this.setState({ slots: next });
-    };
-
-    const devices = devs.map((d) => {
-      const cur = slotOf(d.id);
-      const keys = d.kind === 'in' ? ['hw1'] : ['a1', 'a2', 'a3'];
+    const devices = list.map((d) => {
+      const keys = d.kind === 'in' ? ['hw1', 'hw2'] : ['a1', 'a2', 'a3', 'b1', 'b2'];
+      const used = keys.filter((k) => dev[k] === d.name);
       return {
-        name: d.name, sub: d.sub,
-        isMic: d.icon === 'mic', isSpk: d.icon === 'spk', isHp: d.icon === 'hp',
-        rowBg: cur ? 'var(--signal-soft)' : 'var(--surface-2)',
-        rowBorder: cur ? 'var(--signal)' : 'transparent',
-        status: cur ? 'Подключено · ' + label[cur] : 'Свободно',
-        pillStyle: cur ? 'background:var(--ok-soft);color:var(--ok)' : 'background:var(--bg);color:var(--muted)',
-        chips: keys.map((k) => ({
-          label: label[k],
-          on: st.slots[k] === d.id,
-          aria: (st.slots[k] === d.id ? 'Отключить ' : 'Подключить ') + d.name + ' к ' + label[k],
-          style: st.slots[k] === d.id
-            ? 'background:var(--signal);color:var(--signal-ink);border:1px solid var(--signal)'
-            : 'background:var(--surface);color:var(--fg);border:1px solid var(--line)',
-          pick: assign(k, d.id)
-        }))
+        name: d.name,
+        sub: (d.kind === 'in' ? 'вход' : 'выход') + (d.def ? ' · по умолчанию в Windows' : ''),
+        isMic: d.kind === 'in', isSpk: d.kind === 'out' && !isHp(d.name), isHp: d.kind === 'out' && isHp(d.name),
+        rowBg: used.length ? 'var(--signal-soft)' : 'var(--surface-2)',
+        rowBorder: used.length ? 'var(--signal)' : 'transparent',
+        status: used.length ? 'Подключено · ' + used.map((k) => label[k]).join(', ') : 'Свободно',
+        pillStyle: used.length ? 'background:var(--ok-soft);color:var(--ok)' : 'background:var(--bg);color:var(--muted)',
+        chips: keys.map((k) => {
+          const on = dev[k] === d.name;
+          return {
+            label: label[k], on,
+            aria: (on ? 'Отключить ' : 'Подключить ') + d.name + ' к ' + label[k],
+            style: on
+              ? 'background:var(--signal);color:var(--signal-ink);border:1px solid var(--signal)'
+              : 'background:var(--surface);color:var(--fg);border:1px solid var(--line)',
+            pick: () => B.setDevice(k, on ? '' : d.name)
+          };
+        })
       };
     });
 
+    const slotDefs = [
+      { key: 'hw1', role: 'Железный вход · микрофон 1', tone: 'warn' },
+      { key: 'hw2', role: 'Железный вход · микрофон 2', tone: 'warn' },
+      { key: 'a1', role: 'Колонки', tone: 'signal' },
+      { key: 'a2', role: 'Наушники', tone: 'signal' },
+      { key: 'a3', role: 'Запасной выход', tone: 'signal' },
+      { key: 'b1', role: 'Виртуальный микрофон 1 (для OBS)', tone: 'warn' },
+      { key: 'b2', role: 'Виртуальный микрофон 2 (для звонков)', tone: 'warn' }
+    ];
     const slots = slotDefs.map((s) => {
-      const id = st.slots[s.key];
-      const dev = devs.find((d) => d.id === id);
+      const name = dev[s.key] || '';
+      const bad = name && st && !okm[s.key];
       return {
-        tag: s.tag, role: s.role,
-        device: dev ? dev.name : 'Ничего не подключено',
-        nameColor: dev ? 'var(--fg)' : 'var(--muted)',
-        connected: !!dev, empty: !dev,
-        border: dev ? 'var(--signal)' : 'transparent',
+        tag: label[s.key], role: s.role,
+        device: name ? (bad ? 'Не открылось (занято?): ' + name : name) : 'Ничего не подключено',
+        nameColor: bad ? 'var(--bad)' : (name ? 'var(--fg)' : 'var(--muted)'),
+        connected: !!name, empty: !name,
+        border: bad ? 'var(--bad)' : (name ? 'var(--signal)' : 'transparent'),
         tagStyle: 'background:var(--' + s.tone + '-soft);color:var(--' + s.tone + ')',
-        disconnect: () => this.setState({ slots: { ...st.slots, [s.key]: null } })
+        disconnect: () => B.setDevice(s.key, '')
       };
     });
 
     const vSig = 'background:var(--signal-soft);color:var(--signal)';
     const vWarn = 'background:var(--warn-soft);color:var(--warn)';
     const virtuals = [
-      { tag: 'V1', name: 'Bogestv0 Input 1', hint: 'для игр',            tagStyle: vSig },
-      { tag: 'V2', name: 'Bogestv0 Input 2', hint: 'для музыки',         tagStyle: vSig },
-      { tag: 'V3', name: 'Bogestv0 Input 3', hint: 'для Discord',        tagStyle: vSig },
-      { tag: 'V4', name: 'Bogestv0 Input 4', hint: 'для браузера',       tagStyle: vSig },
-      { tag: 'B1', name: 'Bogestv0 Output 1', hint: 'микрофон для OBS',  tagStyle: vWarn },
+      { tag: 'V1', name: 'Bogestv0 Input 1', hint: 'для игр', tagStyle: vSig },
+      { tag: 'V2', name: 'Bogestv0 Input 2', hint: 'для музыки', tagStyle: vSig },
+      { tag: 'V3', name: 'Bogestv0 Input 3', hint: 'для Discord', tagStyle: vSig },
+      { tag: 'V4', name: 'Bogestv0 Input 4', hint: 'для браузера', tagStyle: vSig },
+      { tag: 'V5', name: 'Bogestv0 Input 5', hint: 'для донатов', tagStyle: vSig },
+      { tag: 'V6', name: 'Bogestv0 Input 6', hint: 'для второго браузера', tagStyle: vSig },
+      { tag: 'B1', name: 'Bogestv0 Output 1', hint: 'микрофон для OBS', tagStyle: vWarn },
       { tag: 'B2', name: 'Bogestv0 Output 2', hint: 'микрофон для звонков', tagStyle: vWarn }
     ];
-
-    const used = Object.keys(st.slots).filter((k) => st.slots[k]).length;
-    return { devices, slots, virtuals, foundCount: devs.length, usedCount: used };
+    const used = Object.keys(dev).filter((k) => dev[k]).length;
+    return { devices, slots, virtuals, foundCount: list.length, usedCount: used, refresh: () => B.send('devices') };
   }
 }
 </script>
