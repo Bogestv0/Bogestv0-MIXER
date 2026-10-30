@@ -1,6 +1,13 @@
-﻿# Удаление драйвера Bogestv0 Virtual Audio (этап 6.3). Запускать от имени администратора. Тестовый режим не трогает.
+﻿# Удаление драйвера Bogestv0 Virtual Audio. Запускать от имени администратора. Тестовый режим не трогает.
+# Ключ -Auto: так его вызывает деинсталлятор микшера. При обновлении микшера (деинсталлятор запущен с /UPDATE) драйвер не трогается.
+param([switch]$Auto)
 $ErrorActionPreference = 'Stop'
 $hwid = 'Root\Sysvad_ComponentizedAudioSample'
+
+if ($Auto -and ($env:BOGESTV0_UNINST_CMD -match '/UPDATE')) {
+    Write-Host 'Это обновление микшера: драйвер оставляю на месте.'
+    exit 0
+}
 
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host 'ОШИБКА: запустите PowerShell от имени администратора.' -ForegroundColor Red; exit 1
@@ -16,6 +23,10 @@ Write-Host '2/2 Удаляю пакеты драйвера (поставщик B
 $pkgs = Get-WindowsDriver -Online -All | Where-Object { $_.ProviderName -eq 'Bogestv0' }
 if (-not $pkgs) { Write-Host 'Пакетов не найдено.' }
 foreach ($p in $pkgs) { Write-Host "  $($p.Driver)"; pnputil /delete-driver $p.Driver /uninstall /force }
+
+# Служебное: задача доустановки после перезагрузки и отметка об установленной версии.
+try { Unregister-ScheduledTask -TaskName 'Bogestv0DriverSetup' -Confirm:$false -ErrorAction SilentlyContinue } catch {}
+Remove-Item (Join-Path $env:ProgramData 'Bogestv0\driver.sig') -Force -ErrorAction SilentlyContinue
 
 Write-Host ''
 Write-Host 'Готово. Сертификат (package.cer) остаётся в хранилищах; убрать его можно в certmgr.msc (Доверенные корневые, Доверенные издатели).' -ForegroundColor Green
