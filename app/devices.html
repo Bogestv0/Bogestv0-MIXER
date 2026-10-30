@@ -249,7 +249,7 @@ class Component extends DCLogic {
 
     const vSig = 'background:var(--signal-soft);color:var(--signal)';
     const vWarn = 'background:var(--warn-soft);color:var(--warn)';
-    // Драйвер (этап 6.4): st.drv = { shm, via (память от драйвера), found (устройство драйвера есть), alive, in[6], out[2] }
+    // Драйвер (этап 6.4): st.drv = { shm, via (память от драйвера), found (устройство драйвера есть), alive, in[6], out[8] (B1, B2, Out 1..6) }
     const drv = (st && st.drv) || null;
     const via = !!(drv && drv.via);
     const found = !!(drv && drv.found);
@@ -262,18 +262,15 @@ class Component extends DCLogic {
     }
     const open = (i) => via && drv.in && drv.in[i] ? 'открыто программой' : null;
     const openOut = (j) => via && drv.out && drv.out[j] ? 'читает программа' : null;
-    const virtuals = [
-      { tag: 'V1', name: 'Bogestv0 Input 1', hint: open(0) || 'для игр', tagStyle: vSig },
-      { tag: 'V2', name: 'Bogestv0 Input 2', hint: open(1) || 'для музыки', tagStyle: vSig },
-      { tag: 'V3', name: 'Bogestv0 Input 3', hint: open(2) || 'для Discord', tagStyle: vSig },
-      { tag: 'V4', name: 'Bogestv0 Input 4', hint: open(3) || 'для браузера', tagStyle: vSig },
-      { tag: 'V5', name: 'Bogestv0 Input 5', hint: open(4) || 'для донатов', tagStyle: vSig },
-      { tag: 'V6', name: 'Bogestv0 Input 6', hint: open(5) || 'для второго браузера', tagStyle: vSig },
-      { tag: 'B1', name: 'Bogestv0 Output 1', hint: openOut(0) || 'микрофон для OBS', tagStyle: vWarn },
-      { tag: 'B2', name: 'Bogestv0 Output 2', hint: openOut(1) || 'микрофон для звонков', tagStyle: vWarn }
-    ];
+    // Имена как в Windows (латиницей): In = сюда играет программа, Out = устройство для OBS (чистый звук дорожки до фейдера).
+    const tracks = [['Games', 'для игр'], ['Music', 'для музыки'], ['Discord', 'для Discord'], ['Browser 1', 'для браузера'], ['Donations', 'для донатов'], ['Browser 2', 'для второго браузера']];
+    const virtuals = [];
+    tracks.forEach((tr, i) => virtuals.push({ tag: 'V' + (i + 1), name: 'Bogestv0 ' + tr[0] + ' In', hint: open(i) || tr[1], tagStyle: vSig }));
+    virtuals.push({ tag: 'B1', name: 'Bogestv0 Mix B1 Out', hint: openOut(0) || 'общий микс B1 для OBS', tagStyle: vWarn });
+    virtuals.push({ tag: 'B2', name: 'Bogestv0 Mix B2 Out', hint: openOut(1) || 'общий микс B2 для звонков', tagStyle: vWarn });
+    tracks.forEach((tr, i) => virtuals.push({ tag: 'T' + (i + 1), name: 'Bogestv0 ' + tr[0] + ' Out', hint: openOut(2 + i) || 'звук дорожки V' + (i + 1) + ' для OBS (до фейдера)', tagStyle: vWarn }));
     const virtualsNote = via
-      ? 'Звук идёт через драйвер: в программе (Spotify, игра, Discord) выберите «Bogestv0 Input N» устройством вывода. «Bogestv0 Output 1/2» видят OBS и Discord как микрофон. Если у устройства в Windows частота не 48 000 Гц, звук пойдёт с другой высотой: поставьте 48 000 Гц в свойствах устройства (позже это сделается само).'
+      ? 'Звук идёт через драйвер: в программе (Spotify, игра, Discord) выберите «Bogestv0 … In» устройством вывода (Games, Music, Discord, Browser 1, Donations, Browser 2). «Bogestv0 … Out» видят OBS и Discord как микрофон: у каждой дорожки свой чистый звук (до фейдера), а «Mix B1/B2 Out» отдают общие шины. Если у устройства в Windows частота не 48 000 Гц, звук пойдёт с другой высотой: поставьте 48 000 Гц в свойствах устройства (позже это сделается само).'
       : found
         ? 'Драйвер установлен, но движок не смог получить от него память. Подробности в сообщении об ошибке внизу окна. Пока V1–V6 проверяются тест-сигналом на экране «Микшер».'
         : 'Драйвера нет: V1–V6 проверяются тест-сигналом на экране «Микшер». Установка драйвера описана в docs/ЭТАП-6.md (часть 6.3). Для проверки B1 и B2 можно назначить любой выход (например, виртуальный кабель).';
@@ -283,9 +280,9 @@ class Component extends DCLogic {
     const dg = via && drv.diag ? drv.diag : null;
     if (dg) {
       const ms = (f) => Math.round((f || 0) / 48) + ' мс';
-      const names = ['V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'B1', 'B2'];
+      const names = ['V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'B1', 'B2', 'T1', 'T2', 'T3', 'T4', 'T5', 'T6'];
       const lines = [];
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 14; i++) {
         const rate = dg.rate && dg.rate[i];
         if (!rate) continue;
         let s = names[i] + ': Windows ' + rate + ' Гц' + (rate !== 48000 ? ' (не 48 000: будет другая высота и треск)' : '');

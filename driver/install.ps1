@@ -84,6 +84,20 @@ if ($bcd -notmatch '(?im)^\s*testsigning\s+Yes') {
     Done 3010
 }
 
+# 1b. Устройство уже есть, но драйвер другой версии (иначе мы бы вышли выше): сначала убираем старое. Так новые устройства появляются
+# и получают новые имена (Windows запоминает имена конечных точек). Платой за это Windows может снова назначить наши устройства по умолчанию.
+if ($Auto -and (Get-OurDevice)) {
+    $un = Join-Path $here 'uninstall.ps1'
+    if (Test-Path $un) {
+        Write-Host 'Стоит драйвер другой версии: удаляю его перед установкой новой (чистая переустановка).'
+        $env:BOGESTV0_UNINST_CMD = ''
+        $psExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $p = Start-Process -FilePath $psExe -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -File "{0}" -Auto' -f $un) -Wait -PassThru -WindowStyle Hidden
+        Write-Host ('Удаление старого драйвера завершено, код {0}.' -f $p.ExitCode)
+        Start-Sleep -Seconds 2
+    }
+}
+
 # 2. Сертификат в оба хранилища
 Write-Host '1/3 Сертификат...'
 certutil -addstore Root $cer | Out-Null

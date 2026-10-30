@@ -11,6 +11,8 @@
 Часть 6.2b: число устройств 4+4 -> 6+2. Воспроизведение: к четырём штатным добавляются «Input 5» и «Input 6» (копии
 SPDIF-пары: те же таблицы, но свои имена подустройств, свои разделы INF). Запись: остаются MicIn и MicArray1
 («Output 1», «Output 2»), массивы 2 и 3 убираются из списка устройств.
+Часть 6.8: выходы дорожек. К устройствам записи Output 1–2 (шины B1, B2) добавляются шесть стереокопий MicIn (WaveOut1..6): чистый
+звук дорожек V1..V6 для OBS. Имена в Windows: «Bogestv0 <Дорожка> In / Out» (латиницей), см. TRACKS.
 Часть 6.4: мост с общей памятью движка. В EndpointsCommon добавляются наши файлы (driver/src), потоки SysVAD вместо тона и записи
 в файл гоняют звук через кольца общей памяти, драйвер создаёт управляющее устройство Bogestv0Mixer, через которое движок получает память.
 """
@@ -30,6 +32,24 @@ MINIPAIRS = "audio/sysvad/TabletAudioSample/minipairs.h"
 
 # Добавляемые устройства воспроизведения (6.2b): (номер, имя в Windows)
 EXTRA_INPUTS = (5, 6)
+
+# Имена в Windows (латиницей: надёжно для INF). Номер = дорожка микшера V1..V6 (экран «Дорожки и аудио»): Игры, Музыка, Discord,
+# Браузер, Донаты, Браузер 2. «In» = устройство воспроизведения (сюда играет программа), «Out» = устройство записи (его слушает OBS:
+# чистый звук этой дорожки до фейдера). Шины B1 и B2 остаются общими выходами.
+TRACKS = {1: "Games", 2: "Music", 3: "Discord", 4: "Browser 1", 5: "Donations", 6: "Browser 2"}
+def in_name(n): return f"Bogestv0 {TRACKS[n]} In"
+def out_name(n): return f"Bogestv0 {TRACKS[n]} Out"
+BUS_NAMES = {1: "Bogestv0 Mix B1 Out", 2: "Bogestv0 Mix B2 Out"}
+# Копии устройства записи «MicIn» (стерео) для выходов дорожек 1..6 (6.8): имена подустройств WaveOut1..6 / TopologyOut1..6.
+OUT_RINGS = tuple(range(1, 7))
+OUT_NAME_GUIDS = {
+    1: "4b0c7d11-6e1a-4c55-9a30-1f6d2b8e5a01",
+    2: "4b0c7d11-6e1a-4c55-9a30-1f6d2b8e5a02",
+    3: "4b0c7d11-6e1a-4c55-9a30-1f6d2b8e5a03",
+    4: "4b0c7d11-6e1a-4c55-9a30-1f6d2b8e5a04",
+    5: "4b0c7d11-6e1a-4c55-9a30-1f6d2b8e5a05",
+    6: "4b0c7d11-6e1a-4c55-9a30-1f6d2b8e5a06",
+}
 
 # Имена конечных точек воспроизведения (6.2c): номер -> GUID имени
 INPUT_NAME_GUIDS = {
@@ -57,21 +77,21 @@ STRINGS = [
     ('SYSVAD_ComponentizedAudioSample.SvcDesc="Virtual Audio Device (WDM) - Tablet Sample Driver"',
      'SYSVAD_ComponentizedAudioSample.SvcDesc="Bogestv0 Virtual Audio Driver"'),
     # Устройства воспроизведения: их увидят программы (Spotify, игры, Discord). Пока 4 из 6 (остальные два добавит 6.2b).
-    ('SYSVAD.WaveSpeaker.szPname="SYSVAD Wave Speaker"', 'SYSVAD.WaveSpeaker.szPname="Bogestv0 Input 1"'),
-    ('SYSVAD.TopologySpeaker.szPname="SYSVAD Topology Speaker"', 'SYSVAD.TopologySpeaker.szPname="Bogestv0 Input 1 Topology"'),
-    ('SYSVAD.WaveSpeakerHeadphone.szPname="SYSVAD Wave Speaker Headphone"', 'SYSVAD.WaveSpeakerHeadphone.szPname="Bogestv0 Input 2"'),
-    ('SYSVAD.TopologySpeakerHeadphone.szPname="SYSVAD Topology Speaker Headphone"', 'SYSVAD.TopologySpeakerHeadphone.szPname="Bogestv0 Input 2 Topology"'),
-    ('SYSVAD.WaveHdmi.szPname="SYSVAD Wave HDMI"', 'SYSVAD.WaveHdmi.szPname="Bogestv0 Input 3"'),
-    ('SYSVAD.TopologyHdmi.szPname="SYSVAD Topology HDMI"', 'SYSVAD.TopologyHdmi.szPname="Bogestv0 Input 3 Topology"'),
-    ('SYSVAD.WaveSpdif.szPname="SYSVAD Wave SPDIF"', 'SYSVAD.WaveSpdif.szPname="Bogestv0 Input 4"'),
-    ('SYSVAD.TopologySpdif.szPname="SYSVAD Topology SPDIF"', 'SYSVAD.TopologySpdif.szPname="Bogestv0 Input 4 Topology"'),
-    # Устройства записи: их увидят OBS и Discord как микрофоны.
-    ('SYSVAD.WaveMicIn.szPname="SYSVAD Wave Microphone Headphone"', 'SYSVAD.WaveMicIn.szPname="Bogestv0 Output 1"'),
-    ('SYSVAD.TopologyMicIn.szPname="SYSVAD Topology Microphone Headphone"', 'SYSVAD.TopologyMicIn.szPname="Bogestv0 Output 1 Topology"'),
-    ('SYSVAD.WaveMicArray1.szPname="SYSVAD Wave Microphone Array - Front"', 'SYSVAD.WaveMicArray1.szPname="Bogestv0 Output 2"'),
-    ('SYSVAD.TopologyMicArray1.szPname="SYSVAD Topology Microphone Array - Front"', 'SYSVAD.TopologyMicArray1.szPname="Bogestv0 Output 2 Topology"'),
-    ('MicInCustomName= "External Microphone Headphone"', 'MicInCustomName= "Bogestv0 Output 1"'),
-    ('MicArray1CustomName= "Internal Microphone Array - Front"', 'MicArray1CustomName= "Bogestv0 Output 2"'),
+    ('SYSVAD.WaveSpeaker.szPname="SYSVAD Wave Speaker"', f'SYSVAD.WaveSpeaker.szPname="{in_name(1)}"'),
+    ('SYSVAD.TopologySpeaker.szPname="SYSVAD Topology Speaker"', f'SYSVAD.TopologySpeaker.szPname="{in_name(1)} Topology"'),
+    ('SYSVAD.WaveSpeakerHeadphone.szPname="SYSVAD Wave Speaker Headphone"', f'SYSVAD.WaveSpeakerHeadphone.szPname="{in_name(2)}"'),
+    ('SYSVAD.TopologySpeakerHeadphone.szPname="SYSVAD Topology Speaker Headphone"', f'SYSVAD.TopologySpeakerHeadphone.szPname="{in_name(2)} Topology"'),
+    ('SYSVAD.WaveHdmi.szPname="SYSVAD Wave HDMI"', f'SYSVAD.WaveHdmi.szPname="{in_name(3)}"'),
+    ('SYSVAD.TopologyHdmi.szPname="SYSVAD Topology HDMI"', f'SYSVAD.TopologyHdmi.szPname="{in_name(3)} Topology"'),
+    ('SYSVAD.WaveSpdif.szPname="SYSVAD Wave SPDIF"', f'SYSVAD.WaveSpdif.szPname="{in_name(4)}"'),
+    ('SYSVAD.TopologySpdif.szPname="SYSVAD Topology SPDIF"', f'SYSVAD.TopologySpdif.szPname="{in_name(4)} Topology"'),
+    # Устройства записи B1 и B2 (общие шины): их увидят OBS и Discord как микрофоны.
+    ('SYSVAD.WaveMicIn.szPname="SYSVAD Wave Microphone Headphone"', f'SYSVAD.WaveMicIn.szPname="{BUS_NAMES[1]}"'),
+    ('SYSVAD.TopologyMicIn.szPname="SYSVAD Topology Microphone Headphone"', f'SYSVAD.TopologyMicIn.szPname="{BUS_NAMES[1]} Topology"'),
+    ('SYSVAD.WaveMicArray1.szPname="SYSVAD Wave Microphone Array - Front"', f'SYSVAD.WaveMicArray1.szPname="{BUS_NAMES[2]}"'),
+    ('SYSVAD.TopologyMicArray1.szPname="SYSVAD Topology Microphone Array - Front"', f'SYSVAD.TopologyMicArray1.szPname="{BUS_NAMES[2]} Topology"'),
+    ('MicInCustomName= "External Microphone Headphone"', f'MicInCustomName= "{BUS_NAMES[1]}"'),
+    ('MicArray1CustomName= "Internal Microphone Array - Front"', f'MicArray1CustomName= "{BUS_NAMES[2]}"'),
 ]
 
 
@@ -193,11 +213,12 @@ def patch_minipairs(root: pathlib.Path) -> int:
         "список g_RenderEndpoints", errors)
 
     # 3. Список устройств записи: 4 -> 2 (остаются MicIn и MicArray1).
-    text = replace_once(
-        text,
-        "    &MicArray1Miniports,\n    &MicArray2Miniports,\n    &MicArray3Miniports,\n};",
-        "    &MicArray1Miniports,\n};",
-        "список g_CaptureEndpoints", errors)
+    if "&BogestvOut1Miniports" not in text:   # повторный запуск: список уже дополнен выходами дорожек (patch_outputs)
+        text = replace_once(
+            text,
+            "    &MicArray1Miniports,\n    &MicArray2Miniports,\n    &MicArray3Miniports,\n};",
+            "    &MicArray1Miniports,\n};",
+            "список g_CaptureEndpoints", errors)
 
     if errors:
         for e in errors:
@@ -212,7 +233,7 @@ def inx_extra_sections() -> str:
     out = []
     for n in EXTRA_INPUTS:
         out.append(f""";======================================================
-; render interfaces: Bogestv0 Input {n}
+; render interfaces: {in_name(n)}
 ;======================================================
 [SYSVAD.I.WaveInput{n}]
 AddReg=SYSVAD.I.WaveInput{n}.AddReg
@@ -237,7 +258,7 @@ def inx_extra_interfaces() -> str:
     out = []
     for n in EXTRA_INPUTS:
         out.append(f""";
-; Interfaces for Bogestv0 Input {n} render endpoint.
+; Interfaces for {in_name(n)} render endpoint.
 ;
 AddInterface=%KSCATEGORY_AUDIO%, %KSNAME_WaveInput{n}%, SYSVAD.I.WaveInput{n}
 AddInterface=%KSCATEGORY_RENDER%, %KSNAME_WaveInput{n}%, SYSVAD.I.WaveInput{n}
@@ -280,11 +301,11 @@ def patch_inx_devices(root: pathlib.Path) -> int:
         else:
             errors.append("INF: не найдена строка KSNAME_TopologySpdif")
 
-    # Видимые имена (после 6.2a строка SPDIF уже называется «Bogestv0 Input 4 Topology»).
-    t = 'SYSVAD.TopologySpdif.szPname="Bogestv0 Input 4 Topology"\n'
+    # Видимые имена (после 6.2a строка SPDIF уже названа по-нашему).
+    t = f'SYSVAD.TopologySpdif.szPname="{in_name(4)} Topology"\n'
     if 'SYSVAD.WaveInput5.szPname="' not in text:
         if text.count(t) == 1:
-            add = "".join(f'SYSVAD.WaveInput{n}.szPname="Bogestv0 Input {n}"\nSYSVAD.TopologyInput{n}.szPname="Bogestv0 Input {n} Topology"\n'
+            add = "".join(f'SYSVAD.WaveInput{n}.szPname="{in_name(n)}"\nSYSVAD.TopologyInput{n}.szPname="{in_name(n)} Topology"\n'
                           for n in EXTRA_INPUTS)
             text = text.replace(t, t + add)
         else:
@@ -310,7 +331,7 @@ def guid_define(n: int) -> str:
     a = g.split("-")
     tail = a[3] + a[4]
     bytes_ = ", ".join("0x" + tail[i:i + 2] for i in range(0, 16, 2))
-    return (f"\n//\n// {{{g}}}  (Bogestv0 Input {n}: endpoint name)\n"
+    return (f"\n//\n// {{{g}}}  ({in_name(n)}: endpoint name)\n"
             f"DEFINE_GUID(BOGESTV_INPUT{n}_NAME,\n0x{a[0]}, 0x{a[1]}, 0x{a[2]}, {bytes_});\n")
 
 
@@ -385,7 +406,7 @@ def patch_names(root: pathlib.Path) -> int:
          "    eGeoLocFront,\n    eGenLocPrimaryBox,\n    ePortConnJack,",
          "тип разъёма динамиков"),
         ("audio/sysvad/TabletAudioSample/hdmitopo.cpp",
-         'L"SinkDescription Sample"', 'L"Bogestv0 Input 3"', "описание монитора HDMI"),
+         'L"SinkDescription Sample"', f'L"{in_name(3)}"', "описание монитора HDMI"),
     ):
         fp = root / rel
         if not fp.exists():
@@ -415,7 +436,7 @@ def patch_names(root: pathlib.Path) -> int:
     name_anchor = re.search(r'^MicInCustomName\s*=.*\n', t, re.M)
     if 'Input1CustomName=' not in t:
         if name_anchor:
-            add = "".join(f'Input{n}CustomName= "Bogestv0 Input {n}"\n' for n in range(1, 7))
+            add = "".join(f'Input{n}CustomName= "{in_name(n)}"\n' for n in range(1, 7))
             t = t[:name_anchor.end()] + add + t[name_anchor.end():]
         else:
             errors.append("INF: не найдена строка MicInCustomName")
@@ -429,6 +450,196 @@ def patch_names(root: pathlib.Path) -> int:
         return 1
     write_text(path, t, enc, nl)
     print("ok: имена Input 1–6 (таблицы топологии, разъём динамиков, описание HDMI, INF)")
+    return 0
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# 6.8: выходы дорожек. Шесть копий устройства записи MicIn (стерео): «Bogestv0 <Дорожка> Out» = чистый звук дорожки для OBS.
+# ---------------------------------------------------------------------------------------------------------------------
+MICIN_TOP = "audio/sysvad/TabletAudioSample/micintoptable.h"
+MICIN_WAV = "audio/sysvad/TabletAudioSample/micinwavtable.h"
+OUT_WAV_NEW = "audio/sysvad/TabletAudioSample/bogestvoutwavtable.h"
+
+
+def out_top_new(n: int) -> str:
+    return f"audio/sysvad/TabletAudioSample/bogestvout{n}toptable.h"
+
+
+def make_out_wavtable(src: str, errors: list) -> str:
+    """Копия таблицы MicIn: свои имена и стерео вместо моно (16 бит, 8–48 кГц, как у оригинала)."""
+    t = src.replace("MicIn", "BogestvOut").replace("MICIN", "BOGESTVOUT").replace("micinwavtable", "bogestvoutwavtable")
+    t, c1 = re.subn(r"(#define BOGESTVOUT_DEVICE_MAX_CHANNELS\s+)1\b", r"\g<1>2", t)
+
+    def fmt(m):
+        rate = int(m.group(3))
+        return f"{m.group(1)}2,{m.group(2)}{rate},{m.group(4)}{rate * 4},{m.group(5)}4,{m.group(6)}16,"
+    t, c2 = re.subn(r"(WAVE_FORMAT_EXTENSIBLE,\s*)1,(\s*)(\d+),(\s*)\d+,(\s*)2,(\s*)16,", lambda m: (
+        f"{m.group(1)}2,{m.group(2)}{m.group(3)},{m.group(4)}{int(m.group(3)) * 4},{m.group(5)}4,{m.group(6)}16,"), t)
+    t, c3 = re.subn(r"\bKSAUDIO_SPEAKER_MONO\b", "KSAUDIO_SPEAKER_STEREO", t)
+    if c1 != 1 or c2 != 8 or c3 != 8:
+        errors.append(f"таблица MicIn изменилась: каналов {c1} (ждали 1), форматов {c2} (ждали 8), масок {c3} (ждали 8)")
+    return t
+
+
+def make_out_toptable(src: str, n: int, errors: list) -> str:
+    """Копия топологии MicIn для выхода дорожки n: свои имена и своё имя конечной точки (GUID), обработчик свойств общий."""
+    g = OUT_NAME_GUIDS[n]
+    a = g.split("-")
+    tail = a[3] + a[4]
+    bytes_ = ", ".join("0x" + tail[i:i + 2] for i in range(0, 16, 2))
+    t, c = re.subn(r"DEFINE_GUID\(MICIN_CUSTOM_NAME,[^;]*\);",
+                   f"DEFINE_GUID(BOGESTVOUT{n}_CUSTOM_NAME,\n0x{a[0]}, 0x{a[1]}, 0x{a[2]}, {bytes_});", src)
+    if c != 1:
+        errors.append(f"micintoptable.h: DEFINE_GUID найден {c} раз (ожидалось 1)")
+    t = t.replace("PropertyHandler_MicInTopoFilter", "@@HANDLER@@")
+    t = t.replace("MICIN_CUSTOM_NAME", f"BOGESTVOUT{n}_CUSTOM_NAME")
+    t = t.replace("MicIn", f"BogestvOut{n}").replace("MICIN", f"BOGESTVOUT{n}").replace("micintopotable", f"bogestvout{n}toptable")
+    t = t.replace("@@HANDLER@@", "PropertyHandler_MicInTopoFilter")
+    t, c = re.subn(r"\bKSAUDIO_SPEAKER_MONO\b", "KSAUDIO_SPEAKER_STEREO", t)
+    if c != 1:
+        errors.append(f"micintoptable.h: маска каналов найдена {c} раз (ожидалось 1)")
+    return t
+
+
+def out_pair(n: int) -> str:
+    return f"""static
+PHYSICALCONNECTIONTABLE BogestvOut{n}TopologyPhysicalConnections[] =
+{{
+    {{
+        KSPIN_TOPO_BRIDGE,          // TopologyOut
+        KSPIN_WAVE_BRIDGE,          // WaveIn
+        CONNECTIONTYPE_TOPOLOGY_OUTPUT
+    }}
+}};
+
+static
+ENDPOINT_MINIPAIR BogestvOut{n}Miniports =
+{{
+    eMicInDevice,
+    L"TopologyOut{n}",                      // must match KSNAME_TopologyOut{n} in the inf [Strings] section
+    NULL,                                   // optional template name
+    CreateMiniportTopologySYSVAD,
+    &BogestvOut{n}TopoMiniportFilterDescriptor,
+    0, NULL,                                // Interface properties
+    L"WaveOut{n}",                          // must match KSNAME_WaveOut{n} in the inf [Strings] section
+    NULL,                                   // optional template name
+    CreateMiniportWaveRTSYSVAD,
+    &BogestvOutWaveMiniportFilterDescriptor,
+    0, NULL,                                // Interface properties
+    BOGESTVOUT_DEVICE_MAX_CHANNELS,
+    BogestvOutPinDeviceFormatsAndModes,
+    SIZEOF_ARRAY(BogestvOutPinDeviceFormatsAndModes),
+    BogestvOut{n}TopologyPhysicalConnections,
+    SIZEOF_ARRAY(BogestvOut{n}TopologyPhysicalConnections),
+    ENDPOINT_NO_FLAGS,
+    NULL, 0, NULL,                          // audio module settings.
+}};
+
+"""
+
+
+def patch_outputs(root: pathlib.Path) -> int:
+    errors: list = []
+
+    # 1. Новые таблицы (из нетронутых таблиц MicIn).
+    wsrc = root / MICIN_WAV
+    tsrc = root / MICIN_TOP
+    for f in (wsrc, tsrc):
+        if not f.exists():
+            print(f"ОШИБКА: нет файла {f}", file=sys.stderr)
+            return 1
+    wtext, wenc, wnl = read_text(wsrc)
+    ttext, tenc, tnl = read_text(tsrc)
+    if not (root / OUT_WAV_NEW).exists():
+        write_text(root / OUT_WAV_NEW, make_out_wavtable(wtext, errors), wenc, wnl)
+        print("ok: создан bogestvoutwavtable.h")
+    for n in OUT_RINGS:
+        dst = root / out_top_new(n)
+        if not dst.exists():
+            write_text(dst, make_out_toptable(ttext, n, errors), tenc, tnl)
+            print(f"ok: создан bogestvout{n}toptable.h")
+
+    # 2. minipairs.h: подключение таблиц, пары, список устройств записи (2 -> 8).
+    path = root / MINIPAIRS
+    text, enc, nl = read_text(path)
+    inc_anchor = '#include "micinwavtable.h"\n'
+    inc_new = '#include "bogestvoutwavtable.h"\n' + "".join(f'#include "bogestvout{n}toptable.h"\n' for n in OUT_RINGS)
+    text = insert_once(text, inc_anchor, inc_new, "minipairs.h: include таблиц выходов", errors)
+    pairs = ("//\n// Bogestv0: capture endpoints for the mixer tracks (Out 1..6), stereo copies of the MicIn pair.\n//\n"
+             + "".join(out_pair(n) for n in OUT_RINGS))
+    text = insert_once(text, "#define g_cRenderEndpoints  (SIZEOF_ARRAY(g_RenderEndpoints))\n", "\n" + pairs,
+                       "minipairs.h: пары выходов", errors)
+    text = replace_once(
+        text,
+        "    &MicInMiniports,\n    &MicArray1Miniports,\n};",
+        "    &MicInMiniports,\n    &MicArray1Miniports,\n" + "".join(f"    &BogestvOut{n}Miniports,\n" for n in OUT_RINGS) + "};",
+        "список g_CaptureEndpoints (выходы дорожек)", errors)
+
+    # 3. INF.
+    ipath = root / INX
+    t, ienc, inl = read_text(ipath)
+
+    def add_after(text_, pattern, add, what):
+        if add in text_:
+            return text_
+        m = list(re.finditer(pattern, text_, re.M))
+        if len(m) != 1:
+            errors.append(f"INF: {what}: найдено {len(m)} раз (ожидалось 1)")
+            return text_
+        return text_[:m[0].end()] + add + text_[m[0].end():]
+
+    sections = "".join(f""";======================================================
+; capture interfaces: {out_name(n)}
+;======================================================
+[SYSVAD.I.WaveOut{n}]
+AddReg=SYSVAD.I.WaveOut{n}.AddReg
+[SYSVAD.I.WaveOut{n}.AddReg]
+HKR,,FriendlyName,,%SYSVAD.WaveOut{n}.szPname%
+
+[SYSVAD.I.TopologyOut{n}]
+AddReg=SYSVAD.I.TopologyOut{n}.AddReg
+[SYSVAD.I.TopologyOut{n}.AddReg]
+HKR,,FriendlyName,,%SYSVAD.TopologyOut{n}.szPname%
+
+""" for n in OUT_RINGS)
+    if "[SYSVAD.I.WaveOut1]" not in t:
+        anchor = "[SYSVAD.I.WaveMicIn]\n"
+        if t.count(anchor) == 1:
+            t = t.replace(anchor, sections + anchor)
+        else:
+            errors.append(f"INF: раздел [SYSVAD.I.WaveMicIn] найден {t.count(anchor)} раз (ожидалось 1)")
+
+    ifaces = "".join(f"""AddInterface=%KSCATEGORY_AUDIO%,    %KSNAME_WaveOut{n}%, SYSVAD.I.WaveOut{n}
+AddInterface=%KSCATEGORY_REALTIME%, %KSNAME_WaveOut{n}%, SYSVAD.I.WaveOut{n}
+AddInterface=%KSCATEGORY_CAPTURE%,  %KSNAME_WaveOut{n}%, SYSVAD.I.WaveOut{n}
+AddInterface=%KSCATEGORY_AUDIO%,    %KSNAME_TopologyOut{n}%, SYSVAD.I.TopologyOut{n}
+AddInterface=%KSCATEGORY_TOPOLOGY%, %KSNAME_TopologyOut{n}%, SYSVAD.I.TopologyOut{n}
+""" for n in OUT_RINGS)
+    t = add_after(t, r"^AddInterface=%KSCATEGORY_TOPOLOGY%,\s*%KSNAME_TopologyMicIn%,\s*SYSVAD\.I\.TopologyMicIn\s*\n",
+                  "\n;\n; Interfaces for the Bogestv0 track capture endpoints (Out 1..6).\n;\n" + ifaces, "AddInterface для MicIn")
+    t = add_after(t, r'^KSNAME_TopologyMicIn\s*=\s*"TopologyMicIn"\s*\n',
+                  "".join(f'KSNAME_WaveOut{n}="WaveOut{n}"\nKSNAME_TopologyOut{n}="TopologyOut{n}"\n' for n in OUT_RINGS), "KSNAME_TopologyMicIn")
+    t = add_after(t, r'^SYSVAD\.TopologyMicIn\.szPname\s*=.*\n',
+                  "".join(f'SYSVAD.WaveOut{n}.szPname="{out_name(n)}"\nSYSVAD.TopologyOut{n}.szPname="{out_name(n)} Topology"\n' for n in OUT_RINGS),
+                  "SYSVAD.TopologyMicIn.szPname")
+    t = add_after(t, r'^MicInCustomNameGUID\s*=.*\n',
+                  "".join(f"Out{n}CustomNameGUID = {{{OUT_NAME_GUIDS[n]}}}\n" for n in OUT_RINGS), "MicInCustomNameGUID")
+    t = add_after(t, r'^MicInCustomName\s*=.*\n',
+                  "".join(f'Out{n}CustomName= "{out_name(n)}"\n' for n in OUT_RINGS), "MicInCustomName")
+    t = add_after(t, r"^HKR,%MEDIA_CATEGORIES%\\%MicInCustomNameGUID%,Name,,%MicInCustomName%\s*\n",
+                  "".join(f"HKR,%MEDIA_CATEGORIES%\\%Out{n}CustomNameGUID%,Name,,%Out{n}CustomName%\n" for n in OUT_RINGS),
+                  "регистрация имени MicIn")
+    for tok in sorted(set(re.findall(r"%((?:SYSVAD\.\w+\.szPname)|(?:KSNAME_\w+)|(?:Out\dCustomName(?:GUID)?))%", t))):
+        if not re.search(r"^" + re.escape(tok) + r"\s*=", t, re.M):
+            errors.append(f"INF: строка {tok} не определена в [Strings]")
+
+    if errors:
+        for e in errors:
+            print("ОШИБКА: " + e, file=sys.stderr)
+        return 1
+    write_text(ipath, t, ienc, inl)
+    write_text(path, text, enc, nl)
+    print(f"ok: выходы дорожек Out 1–{OUT_RINGS[-1]} (таблицы, пары, INF)")
     return 0
 
 
@@ -621,7 +832,7 @@ def main() -> int:
         print(__doc__)
         return 2
     root = pathlib.Path(sys.argv[1])
-    for step in (patch_inx, patch_inx_devices, patch_minipairs, patch_names, patch_bridge):
+    for step in (patch_inx, patch_inx_devices, patch_minipairs, patch_names, patch_outputs, patch_bridge):
         rc = step(root)
         if rc:
             return rc

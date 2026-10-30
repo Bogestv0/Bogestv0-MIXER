@@ -4,6 +4,11 @@
 (лицензия MS-PL, см. `UPSTREAM.md`). Код Microsoft в репозитории не хранится: сборка (`.github/workflows/driver.yml`) скачивает закреплённую
 версию, накладывает `patch_sysvad.py` и собирает.
 
+## Какие устройства создаёт драйвер
+- Воспроизведение (6): `Bogestv0 Games In`, `Music In`, `Discord In`, `Browser 1 In`, `Donations In`, `Browser 2 In` (дорожки V1–V6).
+- Запись (8): `Bogestv0 Mix B1 Out`, `Mix B2 Out` (общие шины) и `Games Out`, `Music Out`, `Discord Out`, `Browser 1 Out`, `Donations Out`, `Browser 2 Out` (чистый звук дорожки до фейдера).
+- Имена задаёт словарь `TRACKS` в `patch_sysvad.py`; выходы дорожек делает `patch_outputs` (копии MicIn, стерео).
+
 ## Как драйвер попадает к пользователю
 Вручную ничего ставить не нужно. Сборка релиза (`.github/workflows/release.yml`) вызывает `driver.yml`, кладёт результат в `src-tauri/driver/`
 и Tauri упаковывает его в установщик. Установщик (`src-tauri/windows/hooks.nsh`) после копирования файлов запускает

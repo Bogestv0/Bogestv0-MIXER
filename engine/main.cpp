@@ -260,7 +260,7 @@ static int selftest_shm() {
         check(drv != nullptr, "драйвер открывает готовую память");
         if (!drv) return bad + 1;
         const bg::ShmHeader* h = drv->header();
-        check(h->rate == 48000 && h->channels == 2 && h->in_rings == 6 && h->out_rings == 2 && h->ring_frames == bg::kShmRingFrames,
+        check(h->rate == 48000 && h->channels == 2 && h->in_rings == 6 && h->out_rings == 8 && h->ring_frames == bg::kShmRingFrames,
               "заголовок: 48 кГц, 2 канала, 6 входов и 2 выхода");
         check(sizeof(bg::ShmHeader) == 256 && sizeof(bg::ShmRingCtl) == 128, "размеры заголовка и управляющего блока зафиксированы");
 
@@ -355,7 +355,7 @@ static int selftest_driver_mixer() {
             check(drv != nullptr, "драйвер подключился к памяти движка");
             check(m.command("set dev a1 " + dev).empty() && m.slot_ok(2), "ведущее устройство A1 открылось");
             m.command("set strip 3 route 3 1");   // V2 («Музыка») -> B1
-            check(m.state_json().find("\"drv\":{\"shm\":1,\"via\":0,\"found\":0,\"alive\":0,\"in\":[0,0,0,0,0,0],\"out\":[0,0],\"diag\":{\"rate\":[0,0,0,0,0,0,0,0],\"starved\":[0,0,0,0,0,0,0,0],\"drops\":[0,0,0,0,0,0,0,0],\"trim\":[0,0,0,0,0,0]}}") != std::string::npos, "состояние: драйвера пока нет, диагностика колец нулевая");
+            check(m.state_json().find("\"drv\":{\"shm\":1,\"via\":0,\"found\":0,\"alive\":0,\"in\":[0,0,0,0,0,0],\"out\":[0,0,0,0,0,0,0,0],\"diag\":{\"rate\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"starved\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"drops\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"trim\":[0,0,0,0,0,0]}}") != std::string::npos, "состояние: драйвера пока нет, диагностика колец нулевая");
 
             // «Драйвер»: открывает Input 2 и Output 1, пишет постоянный сигнал в Input 2 и читает Output 1.
             bg::ShmRing in2 = drv->in(1), out1 = drv->out(0);
@@ -379,11 +379,23 @@ static int selftest_driver_mixer() {
                 for (uint32_t f = 0; f < got; ++f) if (std::fabs(o[f * 2] - 0.5f) < 1e-3f && std::fabs(o[f * 2 + 1] + 0.25f) < 1e-3f) heard = true;
             }
             check(heard, "звук из Input 2 драйвера пришёл на B1 и вернулся в Output 1 (L=0.5, R=-0.25)");
+            // Выход дорожки Out 2 (V2): чистый звук до фейдера и Mute. Дорожка заглушена, а в OBS звук идёт.
+            bg::ShmRing tap2 = drv->out(bg::kShmBusRings + 1);
+            tap2.discard(); tap2.set_active(true);
+            m.command("set strip 3 mute 1");
+            bool heard_tap = false;
+            for (int i = 0; i < 100 && !heard_tap; ++i) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                const uint32_t got = tap2.pop(o.data(), 480);
+                for (uint32_t f = 0; f < got; ++f) if (std::fabs(o[f * 2] - 0.5f) < 1e-3f && std::fabs(o[f * 2 + 1] + 0.25f) < 1e-3f) heard_tap = true;
+            }
+            check(heard_tap, "выход дорожки Out 2 отдаёт звук V2 до фейдера и Mute (L=0.5, R=-0.25)");
+            m.command("set strip 3 mute 0");
             check(drv->header()->engine_beat.load() > 0, "движок считает блоки: engine_beat растёт");
             m.poll_driver();
             std::this_thread::sleep_for(std::chrono::milliseconds(40));   // драйвер успевает сделать такт между опросами
             m.poll_driver();
-            check(m.driver_alive() && m.state_json().find("\"in\":[0,1,0,0,0,0],\"out\":[1,0]") != std::string::npos, "состояние: драйвер жив, открыты Input 2 и Output 1");
+            check(m.driver_alive() && m.state_json().find("\"in\":[0,1,0,0,0,0],\"out\":[1,0,0,1,0,0,0,0]") != std::string::npos, "состояние: драйвер жив, открыты Input 2 и Output 1");
 
             // Тест-источник важнее драйвера: пока он включён, звук из драйвера не берётся.
             m.command("set strip 3 src sine");
@@ -400,6 +412,7 @@ static int selftest_driver_mixer() {
             // Драйвер закрыл поток: дорожка замолкает, движок в Output 1 больше не пишет.
             in2.set_active(false);
             out1.set_active(false);
+            tap2.set_active(false);
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             const uint32_t w_before = out1.ctl->write_pos.load();
             std::this_thread::sleep_for(std::chrono::milliseconds(150));

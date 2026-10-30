@@ -2,7 +2,9 @@
 //
 // Драйвер Windows (виртуальные устройства) и движок обмениваются звуком через один участок общей памяти:
 //   кольца 0..5 = «Bogestv0 Input 1..6» (V1..V6): пишет драйвер (то, что играют программы), читает движок;
-//   кольца 6..7 = «Bogestv0 Output 1..2» (B1, B2): пишет движок (микс шины), читает драйвер (это «микрофон» для OBS и Discord).
+//   кольца 6..7 = «Bogestv0 Mix B1/B2 Out» (шины B1, B2): пишет движок (микс шины), читает драйвер (это «микрофон» для OBS и Discord);
+//   кольца 8..13 = «Bogestv0 <Дорожка> Out» (Out 1..6): пишет движок (звук дорожки V1..V6 до фейдера и Mute), читает драйвер (для OBS).
+//   Версия раскладки 2 (в версии 1 было 8 колец).
 // Звук: 32-битные числа с плавающей точкой, 2 канала вперемешку (L R L R ...), частота из заголовка (сейчас 48000).
 //
 // Правила обмена (их же должен соблюдать драйвер):
@@ -51,9 +53,11 @@
 namespace bg {
 
 constexpr uint32_t kShmMagic = 0x58474642u;       // "BFGX"
-constexpr uint32_t kShmVersion = 1;
+constexpr uint32_t kShmVersion = 2;
 constexpr int kShmInRings = 6;                    // V1..V6
-constexpr int kShmOutRings = 2;                   // B1, B2
+constexpr int kShmBusRings = 2;                   // B1, B2: микс шины
+constexpr int kShmTapRings = 6;                   // Out 1..6: чистый звук дорожки V1..V6 до фейдера (для OBS)
+constexpr int kShmOutRings = kShmBusRings + kShmTapRings;
 constexpr int kShmRings = kShmInRings + kShmOutRings;
 constexpr uint32_t kShmRingFrames = 8192;         // степень двойки: ~170 мс при 48 кГц
 constexpr uint32_t kShmRate = 48000;
@@ -219,7 +223,7 @@ public:
         return r;
     }
     ShmRing in(int i) const { return ring(i); }                       // V1..V6: пишет драйвер
-    ShmRing out(int i) const { return ring(kShmInRings + i); }        // B1, B2: пишет движок
+    ShmRing out(int i) const { return ring(kShmInRings + i); }        // 0,1 = B1, B2; 2..7 = Out 1..6: пишет движок
     const std::string& where() const { return where_; }
     // Память пришла от драйвера (а не создана движком).
     bool via_driver() const { return via_driver_; }

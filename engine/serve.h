@@ -619,6 +619,9 @@ private:
                     if (i >= 2) drv_was_active_[i - 2] = false;
                     generate(s, i, t, n);
                 }
+                // Выход дорожки для OBS («Bogestv0 <Дорожка> Out»): чистый звук дорожки V1..V6 до фейдера, Mute и Solo.
+                if (shm_ && i >= 2 && i - 2 < kShmTapRings && shm_out_[kShmBusRings + (i - 2)].active())
+                    shm_out_[kShmBusRings + (i - 2)].push(t, static_cast<uint32_t>(n));
                 const bool silent = s.mute.load(std::memory_order_relaxed) || (any_solo && !s.solo.load(std::memory_order_relaxed));
                 const float target = silent ? 0.0f : gain_from_db(s.gain_db.load(std::memory_order_relaxed));
                 ramp(t, n, s.cur_gain, target);
@@ -641,8 +644,8 @@ private:
                 b.meter.feed(a, n, 2);
                 if (k == master_bus) std::memcpy(out + done * 2, a, n * 2 * sizeof(float));
                 else if (ok_[2 + k]) b.ring.push(a, n);
-                if (shm_ && k >= kBuses - kShmOutRings && shm_out_[k - (kBuses - kShmOutRings)].active())
-                    shm_out_[k - (kBuses - kShmOutRings)].push(a, static_cast<uint32_t>(n));   // B1 / B2 -> «Bogestv0 Output 1/2»
+                if (shm_ && k >= kBuses - kShmBusRings && shm_out_[k - (kBuses - kShmBusRings)].active())
+                    shm_out_[k - (kBuses - kShmBusRings)].push(a, static_cast<uint32_t>(n));   // B1 / B2 -> «Bogestv0 Mix B1/B2 Out»
             }
             if (shm_) shm_->header()->engine_beat.fetch_add(1, std::memory_order_relaxed);
             done += n;

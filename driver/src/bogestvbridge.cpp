@@ -1,12 +1,12 @@
 // Мост между потоками SysVAD и общей памятью движка (этап 6.4).
 //
 // Что здесь происходит:
-//  * При загрузке драйвер выделяет невыгружаемую память по раскладке engine/shm.h (заголовок + 8 колец) и создаёт управляющее
+//  * При загрузке драйвер выделяет невыгружаемую память по раскладке engine/shm.h (заголовок + 14 колец) и создаёт управляющее
 //    устройство \Device\Bogestv0Mixer (в Windows оно видно как \\.\Bogestv0Mixer).
 //  * Движок вызывает IOCTL_BOGESTV_MAP_SHM: память отображается в его процесс (MmMapLockedPagesSpecifyCache). Закрыл дескриптор, и
 //    отображение снимается в IRP_MJ_CLEANUP.
-//  * Потоки воспроизведения (Input 1..6) переписывают звук из буфера DMA в кольца 0..5; потоки записи (Output 1..2) заполняют
-//    буфер DMA звуком из колец 6..7. Формат колец: float32, 2 канала, 48 кГц. Преобразование из формата потока (PCM 16/24/32, float)
+//  * Потоки воспроизведения (Input 1..6) переписывают звук из буфера DMA в кольца 0..5; потоки записи (шины B1, B2 и выходы дорожек Out 1..6)
+//    заполняют буфер DMA звуком из колец 6..13. Формат колец: float32, 2 канала, 48 кГц. Преобразование из формата потока (PCM 16/24/32, float)
 //    делается здесь; пересчёт частоты не делается (если у устройства в Windows не 48 кГц, звук будет в другой высоте: этап 6.6).
 //  * Правила обмена (позиции, active, beat) те же, что в shm.h. Все функции потоков вызываются из таймера SysVAD (DISPATCH_LEVEL).
 //
@@ -25,7 +25,7 @@ NTKERNELAPI VOID KeUnstackDetachProcess(_In_ PVOID ApcState);
 
 #define BG_TAG          'bgvB'
 #define BG_IN_RINGS     6
-#define BG_OUT_RINGS    2
+#define BG_OUT_RINGS    8                 // B1, B2 и шесть выходов дорожек (Out 1..6)
 #define BG_RINGS        (BG_IN_RINGS + BG_OUT_RINGS)
 #define BG_RING_FRAMES  8192
 #define BG_RATE         48000
@@ -34,7 +34,7 @@ NTKERNELAPI VOID KeUnstackDetachProcess(_In_ PVOID ApcState);
 #define BG_STRIDE       (BG_CTL_BYTES + BG_RING_FRAMES * 2 * 4)
 #define BG_TOTAL        (BG_HDR_BYTES + BG_STRIDE * BG_RINGS)
 #define BG_MAGIC        0x58474642u
-#define BG_VERSION      1u
+#define BG_VERSION      2u
 
 typedef struct _BG_SHM_HDR {
     volatile ULONG magic;
@@ -139,8 +139,14 @@ LONG BogestvRingFor(_In_ PCWSTR WaveName, _In_ BOOLEAN Capture)
         { L"WaveSpdif",            3, FALSE },   // Input 4
         { L"WaveInput5",           4, FALSE },   // Input 5
         { L"WaveInput6",           5, FALSE },   // Input 6
-        { L"WaveMicIn",            6, TRUE  },   // Output 1 (B1)
-        { L"WaveMicArray1",        7, TRUE  },   // Output 2 (B2)
+        { L"WaveMicIn",            6, TRUE  },   // Mix B1 Out (шина B1)
+        { L"WaveMicArray1",        7, TRUE  },   // Mix B2 Out (шина B2)
+        { L"WaveOut1",             8, TRUE  },   // Games Out (дорожка V1 до фейдера)
+        { L"WaveOut2",             9, TRUE  },   // Music Out (V2)
+        { L"WaveOut3",            10, TRUE  },   // Discord Out (V3)
+        { L"WaveOut4",            11, TRUE  },   // Browser 1 Out (V4)
+        { L"WaveOut5",            12, TRUE  },   // Donations Out (V5)
+        { L"WaveOut6",            13, TRUE  },   // Browser 2 Out (V6)
     };
     for (ULONG i = 0; i < ARRAYSIZE(kMap); ++i)
         if (kMap[i].capture == Capture && wcscmp(kMap[i].name, WaveName) == 0) return kMap[i].ring;
