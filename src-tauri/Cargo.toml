@@ -1,6 +1,6 @@
 [package]
 name = "bogestv0-mixer"
-version = "0.5.2"
+version = "0.5.3"
 description = "Bogestv0 MIXER — виртуальный аудиомикшер для Windows"
 edition = "2021"
 
