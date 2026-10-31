@@ -708,7 +708,8 @@ def patch_bridge(root: pathlib.Path) -> int:
                     "    LONG                        m_bgRing1;      // Bogestv0: номер кольца + 1 (0 = поток не наш)\n"
                     "    BOOLEAN                     m_bgSync;\n"
                     "    ULONGLONG                   m_bgFrames;     // сколько кадров уже передано в кольцо / взято из кольца\n"
-                    "    BG_FMT                      m_bgFmt;\n",
+                    "    BG_FMT                      m_bgFmt;\n"
+                    "    BG_STREAM                   m_bgStream;     // Bogestv0 (0.5.5): состояние потока на кольце (позиция, запас); потоков на кольце может быть несколько\n",
                     "minwavertstream.h: поля", errors)
     t = insert_once(t, "    VOID WriteBytes\n", "    VOID BgPump(_In_ ULONG ByteDisplacement);\n", "minwavertstream.h: BgPump", errors, before=True)
     write_text(path, t, enc, nl)
@@ -718,7 +719,7 @@ def patch_bridge(root: pathlib.Path) -> int:
     t, enc, nl = read_text(path)
     t = insert_once(t, "    RtlCopyMemory(m_pWfExt, pWfEx, sizeof(WAVEFORMATEX) + pWfEx->cbSize);\n",
                     "\n    // Bogestv0: наш ли это поток (по имени подустройства), и в какой он формат.\n"
-                    "    m_bgRing1 = 0;\n    m_bgSync = TRUE;\n    m_bgFrames = 0;\n"
+                    "    m_bgRing1 = 0;\n    m_bgSync = TRUE;\n    m_bgFrames = 0;\n    BogestvStreamInit(&m_bgStream, -1, Capture_);\n"
                     "    if (!m_pMiniport->IsOffloadPin(Pin_) && !m_pMiniport->IsKeywordDetectorPin(Pin_) && !(Capture_ && m_pMiniport->IsLoopbackPin(Pin_)))\n"
                     "    {\n"
                     "        LONG bgRing = BogestvRingFor(m_pMiniport->m_pMiniportPair->WaveName, Capture_);\n"
@@ -726,15 +727,16 @@ def patch_bridge(root: pathlib.Path) -> int:
                     "        {\n"
                     "            BogestvFillFmt(&m_bgFmt, m_pWfExt);\n"
                     "            m_bgRing1 = bgRing + 1;\n"
+                    "            BogestvStreamInit(&m_bgStream, bgRing, Capture_);\n"
                     "        }\n"
                     "    }\n",
                     "minwavertstream.cpp: Init", errors)
     t = insert_once(t, "    m_KsState = State_;\n\n#if defined(SYSVAD_BTH_BYPASS)",
-                    "    if (m_bgRing1 > 0)\n    {\n        m_bgSync = TRUE;\n        BogestvStreamRun(m_bgRing1 - 1, m_bCapture, (State_ == KSSTATE_RUN), &m_bgFmt);\n    }\n\n",
+                    "    if (m_bgRing1 > 0)\n    {\n        m_bgSync = TRUE;\n        BogestvStreamRun(&m_bgStream, (State_ == KSSTATE_RUN), &m_bgFmt);\n    }\n\n",
                     "minwavertstream.cpp: SetState", errors, before=True)
     # деструктор: поток закрыт, кольцо больше не активно
     t = insert_once(t, "    if (NULL != m_pMiniport)\n    {\n        if (m_pAudioModules)\n",
-                    "    if (m_bgRing1 > 0)\n    {\n        BogestvStreamRun(m_bgRing1 - 1, m_bCapture, FALSE, NULL);\n        m_bgRing1 = 0;\n    }\n",
+                    "    if (m_bgRing1 > 0)\n    {\n        BogestvStreamRun(&m_bgStream, FALSE, NULL);\n        m_bgRing1 = 0;\n    }\n",
                     "minwavertstream.cpp: деструктор", errors, before=True)
     # воспроизведение: читаем буфер всегда (а не только при записи файлов)
     t = replace_once(t, "        if (!g_DoNotCreateDataFiles)\n        {\n            // Read from buffer and write to a file.",
@@ -754,8 +756,8 @@ VOID CMiniportWaveRTStream::BgPump
 /*++
 
 Bogestv0 (этап 6.4): переносит кадры между буфером DMA потока и кольцом общей памяти.
-Воспроизведение: кадры, которые «проиграло» бы устройство, уходят в кольцо (их заберёт движок).
-Запись: буфер заполняется звуком из кольца (его туда кладёт движок).
+Воспроизведение: кадры, которые «проиграло» бы устройство, уходят в кольцо (их заберёт движок); если на кольце несколько потоков, звук складывается.
+Запись: буфер заполняется звуком из кольца (его туда кладёт движок); каждый поток читает кольцо своим курсором.
 
 --*/
 {
@@ -786,11 +788,11 @@ Bogestv0 (этап 6.4): переносит кадры между буфером
     {
         if (m_bCapture)
         {
-            BogestvCapture(m_bgRing1 - 1, m_pDmaBuffer, m_ulDmaBufferSize, m_bgFrames, frames, &m_bgFmt);
+            BogestvCapture(&m_bgStream, m_pDmaBuffer, m_ulDmaBufferSize, m_bgFrames, frames, &m_bgFmt);
         }
         else
         {
-            BogestvRender(m_bgRing1 - 1, m_pDmaBuffer, m_ulDmaBufferSize, m_bgFrames, frames, &m_bgFmt);
+            BogestvRender(&m_bgStream, m_pDmaBuffer, m_ulDmaBufferSize, m_bgFrames, frames, &m_bgFmt);
         }
         m_bgFrames = endFrame;
     }

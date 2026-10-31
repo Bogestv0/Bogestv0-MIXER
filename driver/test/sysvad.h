@@ -4,6 +4,7 @@
 #include <cwchar>
 #include <cstddef>
 #include <cstdlib>
+#include <cstdio>
 typedef uint32_t ULONG; typedef int32_t LONG; typedef uint8_t BYTE; typedef uint8_t UCHAR; typedef void* PVOID; typedef size_t SIZE_T; typedef uint64_t ULONGLONG;
 typedef uintptr_t ULONG_PTR; typedef int16_t SHORT; typedef bool BOOLEAN; typedef const wchar_t* PCWSTR; typedef int32_t NTSTATUS; typedef uint16_t WORD;
 #define VOID void
@@ -60,6 +61,10 @@ static GUID KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
 struct WAVEFORMATEX { WORD wFormatTag, nChannels; ULONG nSamplesPerSec, nAvgBytesPerSec; WORD nBlockAlign, wBitsPerSample, cbSize; };
 struct WAVEFORMATEXTENSIBLE { WAVEFORMATEX Format; union { WORD wValidBitsPerSample; } Samples; ULONG dwChannelMask; GUID SubFormat; };
 struct KFLOATING_SAVE { int x; };
+typedef uint32_t KSPIN_LOCK; typedef uint8_t KIRQL;
+inline void KeInitializeSpinLock(KSPIN_LOCK* l) { *l = 0; }
+inline void KeAcquireSpinLock(KSPIN_LOCK* l, KIRQL* o) { if (*l) { std::fprintf(stderr, "спин-блокировка занята: повторный вход\n"); std::abort(); } *l = 1; *o = 0; }
+inline void KeReleaseSpinLock(KSPIN_LOCK* l, KIRQL) { if (!*l) { std::fprintf(stderr, "спин-блокировка не взята\n"); std::abort(); } *l = 0; }
 inline NTSTATUS KeSaveFloatingPointState(KFLOATING_SAVE*) { return 0; }
 inline void KeRestoreFloatingPointState(KFLOATING_SAVE*) {}
 inline void KeMemoryBarrier() { __sync_synchronize(); }

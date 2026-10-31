@@ -6,7 +6,7 @@
 //  * Движок вызывает IOCTL_BOGESTV_MAP_SHM: память отображается в его процесс (MmMapLockedPagesSpecifyCache). Закрыл дескриптор, и
 //    отображение снимается в IRP_MJ_CLEANUP.
 //  * Потоки воспроизведения (Input 1..6) переписывают звук из буфера DMA в кольца 0..5; потоки записи (шины B1, B2 и выходы дорожек Out 1..6)
-//    заполняют буфер DMA звуком из колец 6..13. Формат колец: float32, 2 канала, 48 кГц. Преобразование из формата потока (PCM 16/24/32, float)
+//    заполняют буфер DMA звуком из колец 6..13. На одном кольце может быть несколько потоков Windows (0.5.5): воспроизведение складывается, запись читается у каждого потока своим курсором. Формат колец: float32, 2 канала, 48 кГц. Преобразование из формата потока (PCM 16/24/32, float)
 //    делается здесь; пересчёт частоты не делается (если у устройства в Windows не 48 кГц, звук будет в другой высоте: этап 6.6).
 //  * Правила обмена (позиции, active, beat) те же, что в shm.h. Все функции потоков вызываются из таймера SysVAD (DISPATCH_LEVEL).
 //
@@ -42,7 +42,7 @@ typedef struct _BG_SHM_HDR {
     ULONG engine_pid;
     volatile ULONG engine_beat;
     volatile ULONG driver_beat;
-    ULONG reserved[52];            // reserved[i] = частота, с которой Windows открыла кольцо i (0 = закрыто); пишет драйвер
+    ULONG reserved[52];            // пишет драйвер: [i] = частота, с которой Windows открыла кольцо i (0 = закрыто); [14 + i] = запущено потоков на кольце i; [28 + i] = пик потоков на кольце i
 } BG_SHM_HDR;
 C_ASSERT(sizeof(BG_SHM_HDR) == BG_HDR_BYTES);
 
@@ -77,12 +77,27 @@ static PVOID            g_UserVa = NULL;
 // блоками по своим часам. Без запаса кольцо перед забором почти пусто, любое опоздание движка даёт кусок тишины (хрип), и запас сам
 // уже не набирается: обе стороны идут с одной скоростью. Поэтому: начинаем отдавать звук, только когда накоплено порция + запас; если
 // кольцо опустело, молчим один раз и ждём, пока запас снова наберётся, а сам запас после каждого опустошения растёт.
+// С 0.5.5 запас (Primed / Prime) свой у каждого потока записи: потоков на кольце может быть несколько, у каждого свой курсор чтения.
 #define BG_PRIME_BASE   720               // 15 мс при 48 кГц: начальный запас сверх порции
 #define BG_PRIME_STEP   480               // рост запаса после опустошения (10 мс)
 #define BG_PRIME_MAX    2880              // потолок запаса (60 мс)
 #define BG_TRIM_EXTRA   2400              // если накопилось больше порции + запаса + это (50 мс), лишнее старое выбрасывается
-static BOOLEAN          g_Primed[BG_RINGS];       // запас набран, звук идёт
-static ULONG            g_Prime[BG_RINGS];        // текущий запас (кадры)
+
+// Несколько потоков на одном кольце (0.5.5). Windows может открыть на устройстве больше одного потока (разные приложения или режимы
+// обработки, см. MAX_*_STREAMS в таблицах пинов SysVAD). Правила:
+//  * воспроизведение: потоки СКЛАДЫВАЮТСЯ. Кольцо знает «край» (write_pos); каждый поток пишет со своей позиции Pos: кадры ниже края
+//    суммируются с тем, что уже лежит, кадры на краю и выше дописываются и сдвигают край. Один поток всегда пишет ровно на край, как раньше;
+//  * запись: каждый поток читает СВОИМ курсором (Pos), общий read_pos кольца = самый отстающий из курсоров, поэтому все читатели
+//    получают один и тот же звук, а движок видит свободное место по самому медленному;
+//  * кольцо активно (active = 1), пока запущен хотя бы один поток; счётчики потоков идут в заголовок (BG_HDR_STREAMS / BG_HDR_PEAK);
+//  * всё состояние кольца и потоков меняется под замком кольца (спин-блокировка, до DISPATCH_LEVEL).
+#define BG_MAX_STREAMS  8                 // потоков на кольцо (в таблицах пинов максимум 6)
+#define BG_MIX_WINDOW   4800              // насколько (кадры, 100 мс) поток может отставать от края или опережать его, дальше он прыгает на край
+#define BG_HDR_STREAMS  14                // reserved[14 + i] = сколько потоков запущено на кольце i сейчас
+#define BG_HDR_PEAK     28                // reserved[28 + i] = наибольшее число потоков на кольце i одновременно (с загрузки драйвера)
+static KSPIN_LOCK       g_Lock[BG_RINGS];
+static BG_STREAM*       g_Run[BG_RINGS][BG_MAX_STREAMS];   // запущенные потоки кольца
+static ULONG            g_Count[BG_RINGS];                 // сколько их
 
 static BG_RING GetRing(LONG i)
 {
@@ -94,47 +109,29 @@ static BG_RING GetRing(LONG i)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Кольца (те же правила, что в ShmRing из shm.h; x64: хранилища упорядочены, нужны барьеры компилятора и полный барьер на границах)
+// Кольца (позиции те же, что в ShmRing из shm.h; x64: хранилища упорядочены, нужны барьеры компилятора и полный барьер на границах)
 // ---------------------------------------------------------------------------------------------------------------------
-static ULONG RingPush(BG_RING* r, const float* in, ULONG n)
+// Читатель (запись): общий read_pos = самый отстающий курсор запущенных потоков. Только вперёд. Вызывать под замком кольца.
+static VOID RecalcReadPos(LONG ring)
 {
-    const ULONG w = r->ctl->write_pos;
-    KeMemoryBarrier();
-    const ULONG rd = r->ctl->read_pos;
-    ULONG used = w - rd;
-    if (used > BG_RING_FRAMES) used = BG_RING_FRAMES;
-    const ULONG space = BG_RING_FRAMES - used;
-    const ULONG m = n < space ? n : space;
-    for (ULONG i = 0; i < m; ++i) {
-        const ULONG idx = (w + i) & (BG_RING_FRAMES - 1);
-        r->data[idx * 2]     = in[i * 2];
-        r->data[idx * 2 + 1] = in[i * 2 + 1];
+    BG_RING r = GetRing(ring);
+    const ULONG w = r.ctl->write_pos;
+    ULONG maxav = 0;
+    BOOLEAN any = FALSE;
+    for (ULONG i = 0; i < g_Count[ring]; ++i) {
+        const BG_STREAM* s = g_Run[ring][i];
+        if (!s->Capture) continue;
+        ULONG av = w - s->Pos;
+        if (av > BG_RING_FRAMES) av = BG_RING_FRAMES;
+        if (!any || av > maxav) maxav = av;
+        any = TRUE;
     }
-    KeMemoryBarrier();
-    r->ctl->write_pos = w + m;
-    if (m < n) InterlockedAdd((volatile LONG*)&r->ctl->drops, (LONG)(n - m));
-    return m;
-}
-
-// Читает до n кадров, остальное дополняет тишиной. trim: если накопилось больше trim + n, самое старое выбрасывается.
-static VOID RingPop(BG_RING* r, float* out, ULONG n, ULONG trim)
-{
-    ULONG rd = r->ctl->read_pos;
-    KeMemoryBarrier();
-    const ULONG w = r->ctl->write_pos;
-    ULONG av = w - rd;
-    if (av > BG_RING_FRAMES) { rd = w; av = 0; }
-    if (trim && av > trim + n) { rd += av - trim; av = trim; }
-    const ULONG m = n < av ? n : av;
-    for (ULONG i = 0; i < m; ++i) {
-        const ULONG idx = (rd + i) & (BG_RING_FRAMES - 1);
-        out[i * 2]     = r->data[idx * 2];
-        out[i * 2 + 1] = r->data[idx * 2 + 1];
+    if (!any) return;
+    const ULONG want = w - maxav;
+    if ((LONG)(want - r.ctl->read_pos) > 0) {
+        KeMemoryBarrier();
+        r.ctl->read_pos = want;
     }
-    for (ULONG i = m * 2; i < n * 2; ++i) out[i] = 0.0f;
-    KeMemoryBarrier();
-    r->ctl->read_pos = rd + m;
-    if (m < n) InterlockedAdd((volatile LONG*)&r->ctl->starved, (LONG)(n - m));
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -230,33 +227,91 @@ static VOID FloatToFrame(BYTE* p, const BG_FMT* f, float l, float r)
 // ---------------------------------------------------------------------------------------------------------------------
 // Потоки
 // ---------------------------------------------------------------------------------------------------------------------
-VOID BogestvStreamRun(_In_ LONG Ring_, _In_ BOOLEAN Capture, _In_ BOOLEAN Run, _In_opt_ const BG_FMT* Fmt)
+VOID BogestvStreamInit(_Out_ BG_STREAM* S, _In_ LONG Ring, _In_ BOOLEAN Capture)
 {
-    if (!g_Mem || Ring_ < 0 || Ring_ >= BG_RINGS) return;
-    BG_RING r = GetRing(Ring_);
+    S->Ring = (Ring >= 0 && Ring < BG_RINGS) ? Ring : -1;
+    S->Capture = Capture;
+    S->Running = FALSE;
+    S->Pos = 0;
+    S->Primed = FALSE;
+    S->Prime = BG_PRIME_BASE;
+}
+
+VOID BogestvStreamRun(_Inout_ BG_STREAM* S, _In_ BOOLEAN Run, _In_opt_ const BG_FMT* Fmt)
+{
+    if (!g_Mem || !S || S->Ring < 0 || S->Ring >= BG_RINGS) return;
+    const LONG ring = S->Ring;
+    BG_RING r = GetRing(ring);
+    KIRQL irql;
+    KeAcquireSpinLock(&g_Lock[ring], &irql);
     if (Run) {
-        if (Capture) {                                   // Output: выбросить старое, потом active = 1
-            r.ctl->read_pos = r.ctl->write_pos;
-            g_Primed[Ring_] = FALSE;                     // ждём запас заново
-            g_Prime[Ring_] = BG_PRIME_BASE;
+        if (!S->Running) {
+            if (g_Count[ring] >= BG_MAX_STREAMS) {           // места нет: поток не регистрируем, его вызовы ничего не делают
+                KeReleaseSpinLock(&g_Lock[ring], irql);
+                return;
+            }
+            const ULONG w = r.ctl->write_pos;
+            if (g_Count[ring] == 0 && S->Capture) {          // Output: первый поток выбрасывает старое, потом active = 1
+                r.ctl->read_pos = w;
+            }
+            S->Pos = w;                                      // запись: читаем с самого нового; воспроизведение: пишем с края
+            S->Primed = FALSE;                               // запись: ждём запас заново
+            S->Prime = BG_PRIME_BASE;
+            g_Run[ring][g_Count[ring]++] = S;
+            S->Running = TRUE;
+            g_Hdr->reserved[BG_HDR_STREAMS + ring] = g_Count[ring];
+            if (g_Count[ring] > g_Hdr->reserved[BG_HDR_PEAK + ring]) g_Hdr->reserved[BG_HDR_PEAK + ring] = g_Count[ring];
         }
-        g_Hdr->reserved[Ring_] = Fmt ? Fmt->Rate : 0;
+        g_Hdr->reserved[ring] = Fmt ? Fmt->Rate : 0;
         KeMemoryBarrier();
         r.ctl->active = 1;
     } else {
-        r.ctl->active = 0;
-        g_Hdr->reserved[Ring_] = 0;
+        if (S->Running) {
+            for (ULONG i = 0; i < g_Count[ring]; ++i) {
+                if (g_Run[ring][i] == S) {
+                    g_Run[ring][i] = g_Run[ring][g_Count[ring] - 1];
+                    g_Run[ring][g_Count[ring] - 1] = NULL;
+                    --g_Count[ring];
+                    break;
+                }
+            }
+            S->Running = FALSE;
+            g_Hdr->reserved[BG_HDR_STREAMS + ring] = g_Count[ring];
+            if (S->Capture) RecalcReadPos(ring);             // остановленный читатель больше не держит кольцо
+        }
+        if (g_Count[ring] == 0) {                            // кольцо закрыто, когда остановился последний поток
+            r.ctl->active = 0;
+            g_Hdr->reserved[ring] = 0;
+        }
     }
     KeMemoryBarrier();
+    KeReleaseSpinLock(&g_Lock[ring], irql);
 }
 
-VOID BogestvRender(_In_ LONG Ring_, _In_ const BYTE* Dma, _In_ ULONG DmaSize, _In_ ULONGLONG Frame0, _In_ ULONG Frames, _In_ const BG_FMT* Fmt)
+VOID BogestvRender(_Inout_ BG_STREAM* S, _In_ const BYTE* Dma, _In_ ULONG DmaSize, _In_ ULONGLONG Frame0, _In_ ULONG Frames, _In_ const BG_FMT* Fmt)
 {
-    if (!g_Mem || Ring_ < 0 || Ring_ >= BG_RINGS || !FmtSupported(Fmt) || DmaSize == 0) return;
+    if (!g_Mem || !S || S->Ring < 0 || S->Ring >= BG_RINGS || !FmtSupported(Fmt) || DmaSize == 0) return;
     InterlockedIncrement((volatile LONG*)&g_Hdr->driver_beat);
+    const LONG ring = S->Ring;
+    KIRQL irql;
+    KeAcquireSpinLock(&g_Lock[ring], &irql);
+    if (!S->Running) {                                       // поток не запущен (или не влез в реестр): в кольцо не пишет
+        KeReleaseSpinLock(&g_Lock[ring], irql);
+        return;
+    }
     KFLOATING_SAVE fs;
-    if (!NT_SUCCESS(KeSaveFloatingPointState(&fs))) return;
-    BG_RING r = GetRing(Ring_);
+    if (!NT_SUCCESS(KeSaveFloatingPointState(&fs))) {
+        KeReleaseSpinLock(&g_Lock[ring], irql);
+        return;
+    }
+    BG_RING r = GetRing(ring);
+    ULONG w = r.ctl->write_pos;                              // край кольца: дальше него ещё никто не писал
+    const ULONG rd = r.ctl->read_pos;
+    ULONG pos = S->Pos;
+    ULONG lost = 0;
+    // Слишком далеко от края (отстал или убежал вперёд): складывать уже не с чем, прыгаем на край.
+    if ((LONG)(w - pos) > BG_MIX_WINDOW || (LONG)(pos - w) > BG_MIX_WINDOW) pos = w;
+
     float tmp[256 * 2];
     const ULONG ba = Fmt->BlockAlign;
     while (Frames > 0) {
@@ -266,39 +321,83 @@ VOID BogestvRender(_In_ LONG Ring_, _In_ const BYTE* Dma, _In_ ULONG DmaSize, _I
         if (n > 256) n = 256;
         if (n == 0) break;
         for (ULONG i = 0; i < n; ++i) FrameToFloat(Dma + off + (SIZE_T)i * ba, Fmt, &tmp[i * 2], &tmp[i * 2 + 1]);
-        RingPush(&r, tmp, n);
+        for (ULONG i = 0; i < n; ++i) {
+            if ((LONG)(pos - w) < 0) {                   // ниже края: там уже лежит звук другого потока
+                if ((LONG)(pos - rd) >= 0) {             // движок это ещё не прочитал: складываем
+                    float* c = &r.data[(pos & (BG_RING_FRAMES - 1)) * 2];
+                    c[0] += tmp[i * 2];
+                    c[1] += tmp[i * 2 + 1];
+                } else {
+                    ++lost;                              // движок уже забрал этот кадр: опоздали
+                }
+                ++pos;
+                continue;
+            }
+            // На краю или выше: дописываем (небольшой зазор до края заполняем тишиной).
+            BOOLEAN full = FALSE;
+            while ((LONG)(pos - w) > 0) {
+                if (w - rd >= BG_RING_FRAMES) { full = TRUE; break; }
+                float* z = &r.data[(w & (BG_RING_FRAMES - 1)) * 2];
+                z[0] = 0.0f; z[1] = 0.0f;
+                ++w;
+            }
+            if (full || w - rd >= BG_RING_FRAMES) {      // кольцо полно: кадр теряем, поток остаётся на краю
+                ++lost;
+                pos = w;
+                continue;
+            }
+            float* c = &r.data[(w & (BG_RING_FRAMES - 1)) * 2];
+            c[0] = tmp[i * 2];
+            c[1] = tmp[i * 2 + 1];
+            ++w;
+            pos = w;
+        }
         Frame0 += n; Frames -= n;
     }
+    KeMemoryBarrier();
+    r.ctl->write_pos = w;                                // данные записаны, теперь публикуем край
+    S->Pos = pos;
+    if (lost) InterlockedAdd((volatile LONG*)&r.ctl->drops, (LONG)lost);
     KeRestoreFloatingPointState(&fs);
+    KeReleaseSpinLock(&g_Lock[ring], irql);
 }
 
-VOID BogestvCapture(_In_ LONG Ring_, _Inout_ BYTE* Dma, _In_ ULONG DmaSize, _In_ ULONGLONG Frame0, _In_ ULONG Frames, _In_ const BG_FMT* Fmt)
+VOID BogestvCapture(_Inout_ BG_STREAM* S, _Inout_ BYTE* Dma, _In_ ULONG DmaSize, _In_ ULONGLONG Frame0, _In_ ULONG Frames, _In_ const BG_FMT* Fmt)
 {
-    if (!g_Mem || Ring_ < 0 || Ring_ >= BG_RINGS || !FmtSupported(Fmt) || DmaSize == 0) return;
+    if (!g_Mem || !S || S->Ring < 0 || S->Ring >= BG_RINGS || !FmtSupported(Fmt) || DmaSize == 0) return;
     InterlockedIncrement((volatile LONG*)&g_Hdr->driver_beat);
+    const LONG ring = S->Ring;
+    KIRQL irql;
+    KeAcquireSpinLock(&g_Lock[ring], &irql);
     KFLOATING_SAVE fs;
-    if (!NT_SUCCESS(KeSaveFloatingPointState(&fs))) return;
-    BG_RING r = GetRing(Ring_);
+    if (!NT_SUCCESS(KeSaveFloatingPointState(&fs))) {
+        KeReleaseSpinLock(&g_Lock[ring], irql);
+        return;
+    }
+    BG_RING r = GetRing(ring);
     float tmp[256 * 2];
     const ULONG ba = Fmt->BlockAlign;
 
-    // Запас (см. выше). Решение одно на всю порцию, а не на каждый кусок по 256 кадров.
-    ULONG prime = g_Prime[Ring_];
-    if (prime < BG_PRIME_BASE) prime = BG_PRIME_BASE;
-    ULONG av = r.ctl->write_pos - r.ctl->read_pos;
-    if (av > BG_RING_FRAMES) { r.ctl->read_pos = r.ctl->write_pos; av = 0; g_Primed[Ring_] = FALSE; }
-    BOOLEAN hold = FALSE;                                // TRUE: в этот раз отдаём тишину, кольцо не трогаем
-    if (!g_Primed[Ring_]) {
-        if (av >= Frames + prime) g_Primed[Ring_] = TRUE;
-        else hold = TRUE;                                // начальное ожидание нехваткой не считаем
-    } else if (av < Frames) {                            // кольцо опустело: молчим один раз, запас растёт
-        g_Primed[Ring_] = FALSE;
-        g_Prime[Ring_] = (prime + BG_PRIME_STEP > BG_PRIME_MAX) ? BG_PRIME_MAX : prime + BG_PRIME_STEP;
-        InterlockedAdd((volatile LONG*)&r.ctl->starved, (LONG)Frames);
-        hold = TRUE;
-    }
-    if (!hold && av > Frames + prime + BG_TRIM_EXTRA) {   // часы разные: запас вырос, лишнее старое выбрасываем до нормы
-        r.ctl->read_pos += av - (Frames + prime);
+    // Запас (см. выше). Решение одно на всю порцию, а не на каждый кусок по 256 кадров. Считаем от СВОЕГО курсора потока.
+    BOOLEAN hold = !S->Running;                          // TRUE: в этот раз отдаём тишину, кольцо не трогаем
+    if (S->Running) {
+        ULONG prime = S->Prime;
+        if (prime < BG_PRIME_BASE) prime = BG_PRIME_BASE;
+        const ULONG w = r.ctl->write_pos;
+        ULONG av = w - S->Pos;
+        if (av > BG_RING_FRAMES) { S->Pos = w; av = 0; S->Primed = FALSE; }
+        if (!S->Primed) {
+            if (av >= Frames + prime) S->Primed = TRUE;
+            else hold = TRUE;                            // начальное ожидание нехваткой не считаем
+        } else if (av < Frames) {                        // кольцо опустело: молчим один раз, запас растёт
+            S->Primed = FALSE;
+            S->Prime = (prime + BG_PRIME_STEP > BG_PRIME_MAX) ? BG_PRIME_MAX : prime + BG_PRIME_STEP;
+            InterlockedAdd((volatile LONG*)&r.ctl->starved, (LONG)Frames);
+            hold = TRUE;
+        }
+        if (!hold && av > Frames + prime + BG_TRIM_EXTRA) {   // часы разные: запас вырос, лишнее старое выбрасываем до нормы
+            S->Pos += av - (Frames + prime);
+        }
     }
     if (hold) {
         for (ULONG i = 0; i < 256 * 2; ++i) tmp[i] = 0.0f;
@@ -309,11 +408,20 @@ VOID BogestvCapture(_In_ LONG Ring_, _Inout_ BYTE* Dma, _In_ ULONG DmaSize, _In_
         if (n > Frames) n = Frames;
         if (n > 256) n = 256;
         if (n == 0) break;
-        if (!hold) RingPop(&r, tmp, n, 0);
+        if (!hold) {                                     // до этого места проверено: в кольце не меньше Frames кадров от курсора потока
+            for (ULONG i = 0; i < n; ++i) {
+                const ULONG idx = (S->Pos + i) & (BG_RING_FRAMES - 1);
+                tmp[i * 2]     = r.data[idx * 2];
+                tmp[i * 2 + 1] = r.data[idx * 2 + 1];
+            }
+            S->Pos += n;
+        }
         for (ULONG i = 0; i < n; ++i) FloatToFrame(Dma + off + (SIZE_T)i * ba, Fmt, tmp[i * 2], tmp[i * 2 + 1]);
         Frame0 += n; Frames -= n;
     }
+    if (S->Running) RecalcReadPos(ring);                 // освободили место: общий read_pos = самый отстающий читатель
     KeRestoreFloatingPointState(&fs);
+    KeReleaseSpinLock(&g_Lock[ring], irql);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -392,6 +500,11 @@ NTSTATUS BogestvBridgeInit(_In_ PDRIVER_OBJECT DriverObject)
     if (!g_Mdl) { ExFreePoolWithTag(g_Mem, BG_TAG); g_Mem = NULL; return STATUS_INSUFFICIENT_RESOURCES; }
     MmBuildMdlForNonPagedPool(g_Mdl);
 
+    for (ULONG i = 0; i < BG_RINGS; ++i) {
+        KeInitializeSpinLock(&g_Lock[i]);
+        g_Count[i] = 0;
+        for (ULONG j = 0; j < BG_MAX_STREAMS; ++j) g_Run[i][j] = NULL;
+    }
     g_Hdr = (BG_SHM_HDR*)g_Mem;
     g_Hdr->version = BG_VERSION;
     g_Hdr->header_bytes = BG_HDR_BYTES;

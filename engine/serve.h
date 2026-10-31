@@ -352,6 +352,12 @@ public:
         for (int i = 0; i < kShmInRings; ++i) o << (i ? "," : "") << in_rd_[i].opens.load(std::memory_order_relaxed);
         o << "],\"closes\":[";
         for (int i = 0; i < kShmInRings; ++i) o << (i ? "," : "") << in_rd_[i].closes.load(std::memory_order_relaxed);
+        // 0.5.5: сколько потоков Windows сейчас запущено на кольце (streams) и наибольшее число одновременно (peak), по всем кольцам.
+        // Два и больше на одном кольце: несколько приложений (или режимов) играют в одно устройство или пишут с него.
+        o << "],\"streams\":[";
+        for (int i = 0; i < kShmRings; ++i) o << (i ? "," : "") << (shm_ ? *reinterpret_cast<const volatile uint32_t*>(&shm_->header()->reserved[14 + i]) : 0u);
+        o << "],\"peak\":[";
+        for (int i = 0; i < kShmRings; ++i) o << (i ? "," : "") << (shm_ ? *reinterpret_cast<const volatile uint32_t*>(&shm_->header()->reserved[28 + i]) : 0u);
         // Остальные кольца движка (читатель с запасом ~10 мс): HW1, HW2 и A1..B2 (у ведущего устройства читателя нет, там нули).
         o << "]},\"hw\":{\"fill\":[";
         for (int i = 0; i < kMics; ++i) o << (i ? "," : "") << mic_rd_[i].fill.load(std::memory_order_relaxed);

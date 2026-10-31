@@ -284,10 +284,13 @@ class Component extends DCLogic {
       const lines = [];
       for (let i = 0; i < 14; i++) {
         const rate = dg.rate && dg.rate[i];
-        const seen = i < 6 && ((dg.opens && dg.opens[i]) || (dg.closes && dg.closes[i]));   // поток уже открывался: строку держим и после закрытия
+        const peak = (dg.peak && dg.peak[i]) || 0;
+        const seen = peak > 0 || (i < 6 && ((dg.opens && dg.opens[i]) || (dg.closes && dg.closes[i])));   // поток уже открывался: строку держим и после закрытия
         if (!rate && !seen) continue;
         let s = names[i] + ': ' + (rate ? 'Windows ' + rate + ' Гц' + (rate !== 48000 ? ' (не 48 000: движок сам пересчитывает в 48 000)' : '') : 'сейчас закрыт');
         s += ', нехватка звука ' + ms(dg.starved && dg.starved[i]) + ', отброшено ' + ms(dg.drops && dg.drops[i]);
+        // Потоков Windows на этом устройстве: сейчас и самое большое число сразу (2 и больше = несколько приложений на одном устройстве).
+        if (peak) s += ', потоков Windows ' + ((dg.streams && dg.streams[i]) || 0) + ' (пик ' + peak + ')';
         if (i < 6) {
           s += ', выброшено сверху ' + ms(dg.trim && dg.trim[i]);
           // Запас на входе: цель сама подстраивается под порции (не меньше 25 мс). «Подстройка» = на сколько движок подгоняет скорость чтения под часы драйвера.
