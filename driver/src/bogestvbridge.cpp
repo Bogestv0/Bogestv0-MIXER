@@ -73,6 +73,17 @@ static PFILE_OBJECT     g_OwnerFile = NULL;
 static PEPROCESS        g_OwnerProc = NULL;
 static PVOID            g_UserVa = NULL;
 
+// Запас на стороне записи (0.5.4). Драйвер забирает звук из колец выходов порциями по таймеру Windows (~10 мс), а движок кладёт его
+// блоками по своим часам. Без запаса кольцо перед забором почти пусто, любое опоздание движка даёт кусок тишины (хрип), и запас сам
+// уже не набирается: обе стороны идут с одной скоростью. Поэтому: начинаем отдавать звук, только когда накоплено порция + запас; если
+// кольцо опустело, молчим один раз и ждём, пока запас снова наберётся, а сам запас после каждого опустошения растёт.
+#define BG_PRIME_BASE   720               // 15 мс при 48 кГц: начальный запас сверх порции
+#define BG_PRIME_STEP   480               // рост запаса после опустошения (10 мс)
+#define BG_PRIME_MAX    2880              // потолок запаса (60 мс)
+#define BG_TRIM_EXTRA   2400              // если накопилось больше порции + запаса + это (50 мс), лишнее старое выбрасывается
+static BOOLEAN          g_Primed[BG_RINGS];       // запас набран, звук идёт
+static ULONG            g_Prime[BG_RINGS];        // текущий запас (кадры)
+
 static BG_RING GetRing(LONG i)
 {
     BG_RING r;
@@ -226,6 +237,8 @@ VOID BogestvStreamRun(_In_ LONG Ring_, _In_ BOOLEAN Capture, _In_ BOOLEAN Run, _
     if (Run) {
         if (Capture) {                                   // Output: выбросить старое, потом active = 1
             r.ctl->read_pos = r.ctl->write_pos;
+            g_Primed[Ring_] = FALSE;                     // ждём запас заново
+            g_Prime[Ring_] = BG_PRIME_BASE;
         }
         g_Hdr->reserved[Ring_] = Fmt ? Fmt->Rate : 0;
         KeMemoryBarrier();
@@ -268,13 +281,35 @@ VOID BogestvCapture(_In_ LONG Ring_, _Inout_ BYTE* Dma, _In_ ULONG DmaSize, _In_
     BG_RING r = GetRing(Ring_);
     float tmp[256 * 2];
     const ULONG ba = Fmt->BlockAlign;
+
+    // Запас (см. выше). Решение одно на всю порцию, а не на каждый кусок по 256 кадров.
+    ULONG prime = g_Prime[Ring_];
+    if (prime < BG_PRIME_BASE) prime = BG_PRIME_BASE;
+    ULONG av = r.ctl->write_pos - r.ctl->read_pos;
+    if (av > BG_RING_FRAMES) { r.ctl->read_pos = r.ctl->write_pos; av = 0; g_Primed[Ring_] = FALSE; }
+    BOOLEAN hold = FALSE;                                // TRUE: в этот раз отдаём тишину, кольцо не трогаем
+    if (!g_Primed[Ring_]) {
+        if (av >= Frames + prime) g_Primed[Ring_] = TRUE;
+        else hold = TRUE;                                // начальное ожидание нехваткой не считаем
+    } else if (av < Frames) {                            // кольцо опустело: молчим один раз, запас растёт
+        g_Primed[Ring_] = FALSE;
+        g_Prime[Ring_] = (prime + BG_PRIME_STEP > BG_PRIME_MAX) ? BG_PRIME_MAX : prime + BG_PRIME_STEP;
+        InterlockedAdd((volatile LONG*)&r.ctl->starved, (LONG)Frames);
+        hold = TRUE;
+    }
+    if (!hold && av > Frames + prime + BG_TRIM_EXTRA) {   // часы разные: запас вырос, лишнее старое выбрасываем до нормы
+        r.ctl->read_pos += av - (Frames + prime);
+    }
+    if (hold) {
+        for (ULONG i = 0; i < 256 * 2; ++i) tmp[i] = 0.0f;
+    }
     while (Frames > 0) {
         const ULONG off = (ULONG)((Frame0 * ba) % DmaSize);
         ULONG n = (DmaSize - off) / ba;
         if (n > Frames) n = Frames;
         if (n > 256) n = 256;
         if (n == 0) break;
-        RingPop(&r, tmp, n, 4096);                       // запас не больше ~85 мс: часы разные, лишнее выбрасываем
+        if (!hold) RingPop(&r, tmp, n, 0);
         for (ULONG i = 0; i < n; ++i) FloatToFrame(Dma + off + (SIZE_T)i * ba, Fmt, tmp[i * 2], tmp[i * 2 + 1]);
         Frame0 += n; Frames -= n;
     }

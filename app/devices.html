@@ -313,6 +313,12 @@ class Component extends DCLogic {
       }
       if (hl.length) diagText += (diagText ? '\n' : '') + 'Устройства микшера (запас на входе и подстройка под часы):\n' + hl.join('\n');
     }
+    // Главное выходное устройство (с 0.5.4): если оно опаздывает, звук хрипит на колонках, а кольца входов переполняются («отброшено» у V-дорожек).
+    const ms2 = drv && drv.mst ? drv.mst : null;
+    if (ms2 && ms2.calls) {
+      diagText += (diagText ? '\n' : '') + 'Главное выходное устройство (A1): вызовов ' + ms2.calls + ', опозданий ' + ms2.late
+        + ', самая долгая пауза ' + (ms2.gap / 1000).toFixed(1) + ' мс, самая долгая обработка блока ' + (ms2.proc / 1000).toFixed(2) + ' мс, перезапусков ' + ms2.rb;
+    }
     const used = Object.keys(dev).filter((k) => dev[k]).length;
     return { devices, slots, virtuals, drvText, drvPill, virtualsNote, diagText, foundCount: list.length, usedCount: used, refresh: () => B.send('devices') };
   }

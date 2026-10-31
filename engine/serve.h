@@ -46,7 +46,7 @@ constexpr int kSlots = 7;
 constexpr int kMics = 2;
 constexpr size_t kMaxBlock = 4096;  // самый большой блок за один проход
 static const char* kSlotNames[kSlots] = {"hw1", "hw2", "a1", "a2", "a3", "b1", "b2"};
-static const char* kEngineVersion = "0.5.3";
+static const char* kEngineVersion = "0.5.4";
 
 // Кольцо «один пишет, один читает» для стерео-кадров. Связывает потоки разных устройств.
 struct Ring {
@@ -229,7 +229,7 @@ public:
             miss_[s] = present ? 0 : miss_[s] + 1;
             if (started && miss_[s] < 2) continue;
             changed = true;
-            if (master_ >= 0 && s == 2 + master_) master_lost = true;
+            if (master_ >= 0 && s == 2 + master_) { master_lost = true; mst_rebuilds_.fetch_add(1, std::memory_order_relaxed); }
             else { close_slot(s); fails_[s] = 0; retry_at_[s] = now; }
         }
 
@@ -365,7 +365,9 @@ public:
         o << "],\"adj\":[";
         for (int i = 0; i < kMics; ++i) o << (i ? "," : "") << mic_rd_[i].adj_ppm.load(std::memory_order_relaxed);
         for (int k = 0; k < kBuses; ++k) o << "," << bus_rd_[k].adj_ppm.load(std::memory_order_relaxed);
-        o << "]}}}";
+        o << "]},\"mst\":{\"calls\":" << mst_calls_.load(std::memory_order_relaxed) << ",\"late\":" << mst_late_.load(std::memory_order_relaxed)
+          << ",\"gap\":" << mst_gap_us_.load(std::memory_order_relaxed) << ",\"proc\":" << mst_proc_us_.load(std::memory_order_relaxed)
+          << ",\"rb\":" << mst_rebuilds_.load(std::memory_order_relaxed) << "}}}";
         return o.str();
     }
 
@@ -476,6 +478,9 @@ private:
     InReader in_rd_[kShmInRings];                  // чтение колец входов с запасом (счётчики для диагностики внутри)
     bool drv_was_active_[kShmInRings] = {};        // только аудио-поток
     uint32_t last_driver_beat_ = 0;                // только сторож
+    // Диагностика ведущего устройства (0.5.4): если оно опаздывает или перезапускается, кольца входов переполняются (в окне «отброшено»).
+    std::atomic<int64_t> mst_last_ns_{0};          // когда был прошлый вызов (только аудио-поток; сторож обнуляет при пересборке)
+    std::atomic<uint32_t> mst_calls_{0}, mst_late_{0}, mst_gap_us_{0}, mst_proc_us_{0}, mst_rebuilds_{0};
     std::atomic<bool> drv_alive_{false};
     std::atomic<unsigned> drv_mask_{0};            // бит 0: драйвер жив; 1..6: входы V1..V6; 7..8: выходы B1, B2
 
@@ -524,9 +529,11 @@ private:
         for (int attempt = 0; attempt < 2; ++attempt) {
             ma_device_config cfg = ma_device_config_init(type);
             cfg.sampleRate = 48000;
-            cfg.periodSizeInFrames = is_master ? 128 : 256;
-            cfg.periods = 2;
-            cfg.performanceProfile = (is_master && attempt == 0) ? ma_performance_profile_low_latency : ma_performance_profile_conservative;
+            // Ведущее устройство (0.5.4): 10 мс × 3 вместо 2,7 мс × 2. Буфер в 5 мс опустошается от любой задержки потока дольше 5 мс
+            // (например, когда Windows запускает системный звук и грузит процессор): колонки хрипят, устройство перезапускается.
+            cfg.periodSizeInFrames = is_master ? 480 : 256;
+            cfg.periods = is_master ? 3 : 2;
+            cfg.performanceProfile = ma_performance_profile_conservative;
             cfg.noPreSilencedOutputBuffer = MA_TRUE;
             cfg.dataCallback = is_master ? &Mixer::cb_master : (s < 2 ? &Mixer::cb_capture : &Mixer::cb_bus);
             cfg.pUserData = &roles_[s];
@@ -561,6 +568,7 @@ private:
 
     std::string rebuild() {
         close_all();
+        mst_last_ns_.store(0, std::memory_order_relaxed);
         std::string err;
         for (int i = 0; i < kStrips; ++i) strips[i].ring.init(8192);
         for (int k = 0; k < kBuses; ++k) buses[k].ring.init(8192);
@@ -606,7 +614,20 @@ private:
     }
     static void cb_master(ma_device* d, void* out, const void*, ma_uint32 frames) {
         Role* r = static_cast<Role*>(d->pUserData);
-        r->m->process(static_cast<float*>(out), frames, r->slot - 2);
+        Mixer* m = r->m;
+        const int64_t t0 = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        const int64_t last = m->mst_last_ns_.exchange(t0, std::memory_order_relaxed);
+        m->mst_calls_.fetch_add(1, std::memory_order_relaxed);
+        if (last != 0) {   // опоздание: между вызовами прошло намного больше, чем длит блок (Windows не дала потоку процессор)
+            const int64_t gap_us = (t0 - last) / 1000;
+            const int64_t block_us = static_cast<int64_t>(frames) * 1000000 / 48000;
+            if (gap_us > block_us * 3 + 5000) m->mst_late_.fetch_add(1, std::memory_order_relaxed);
+            if (gap_us > static_cast<int64_t>(m->mst_gap_us_.load(std::memory_order_relaxed))) m->mst_gap_us_.store(static_cast<uint32_t>(std::min<int64_t>(gap_us, 4000000000LL)), std::memory_order_relaxed);
+        }
+        m->process(static_cast<float*>(out), frames, r->slot - 2);
+        const int64_t t1 = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        const int64_t used_us = (t1 - t0) / 1000;
+        if (used_us > static_cast<int64_t>(m->mst_proc_us_.load(std::memory_order_relaxed))) m->mst_proc_us_.store(static_cast<uint32_t>(std::min<int64_t>(used_us, 4000000000LL)), std::memory_order_relaxed);
     }
 
     void generate(Strip& s, int idx, float* o, size_t n) {
