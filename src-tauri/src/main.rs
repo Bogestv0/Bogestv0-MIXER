@@ -214,6 +214,54 @@ fn apply_prefs(app: &AppHandle, tray: bool, hide_on_close: bool, on_top: bool) {
     }
 }
 
+/// Автозапуск с Windows: значение в ветке Run текущего пользователя (запуск без прав администратора, тихо, сразу в трей).
+const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+const RUN_NAME: &str = "Bogestv0 MIXER";
+
+#[cfg(windows)]
+fn reg(args: &[&str]) -> std::io::Result<std::process::Output> {
+    use std::os::windows::process::CommandExt;
+    Command::new("reg").args(args).creation_flags(0x0800_0000).output() // CREATE_NO_WINDOW
+}
+
+/// Включён ли автозапуск (истина берётся из реестра, а не из файла настроек: пользователь мог убрать его в диспетчере задач).
+#[tauri::command]
+fn autostart_get() -> bool {
+    #[cfg(windows)]
+    {
+        reg(&["query", RUN_KEY, "/v", RUN_NAME]).map(|o| o.status.success()).unwrap_or(false)
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
+#[tauri::command]
+fn autostart_set(enabled: bool) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        if enabled {
+            let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+            let value = format!("\"{}\" --autostart", exe.display());
+            let out = reg(&["add", RUN_KEY, "/v", RUN_NAME, "/t", "REG_SZ", "/d", value.as_str(), "/f"]).map_err(|e| e.to_string())?;
+            if out.status.success() {
+                Ok(())
+            } else {
+                Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+            }
+        } else {
+            // Если значения уже нет, reg вернёт ошибку: для нас это тоже «выключено».
+            reg(&["delete", RUN_KEY, "/v", RUN_NAME, "/f"]).map(|_| ()).map_err(|e| e.to_string())
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = enabled;
+        Err("автозапуск работает только в Windows".into())
+    }
+}
+
 /// Окно присылает сюда настройки «Значок в трее», «Закрытие окна сворачивает в трей» и «Поверх всех окон».
 #[tauri::command]
 fn app_prefs(app: AppHandle, tray: bool, hide_on_close: bool, on_top: bool) {
@@ -243,7 +291,7 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![engine_send, engine_info, engine_restart, settings_load, settings_save, obs_probe, obs_save_collection, app_prefs])
+        .invoke_handler(tauri::generate_handler![engine_send, engine_info, engine_restart, settings_load, settings_save, obs_probe, obs_save_collection, app_prefs, autostart_get, autostart_set])
         .setup(|app| {
             let engine = Engine { stdin: Mutex::new(None), child: Mutex::new(None), boot: AtomicU64::new(0), gen: AtomicU64::new(0) };
             start_engine(app.handle(), &engine);
@@ -282,7 +330,9 @@ fn main() {
                 .build(app)?;
             apply_prefs(app.handle(), tray_on, hide_on_close, on_top);
             // Окно создаётся скрытым (tauri.conf.json). Без значка в трее скрытое окно не открыть, поэтому тогда показываем всегда.
-            if show_on_start || !tray_on {
+            // Запуск вместе с Windows (--autostart): сразу в трей, окно не мешает. Без трея окно показываем всегда.
+            let autostart_launch = std::env::args().any(|a| a == "--autostart");
+            if (show_on_start && !autostart_launch) || !tray_on {
                 show_main(app.handle());
             }
             Ok(())
