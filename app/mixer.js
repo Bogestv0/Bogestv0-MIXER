@@ -74,9 +74,13 @@
 
   /* ---------- крутилки «Гейт» и «Компр.» на микрофонах ---------- */
   // Тянуть вверх: значение растёт. 150 пикселей = весь диапазон. Двойной щелчок = значение по умолчанию.
+  // Бас и ВЧ на виртуальных дорожках: полки ±12 дБ (движок: engine/eq.h). Двойной щелчок = 0 дБ.
+  const eqShow = (v) => (v === 0 ? '0 дБ' : (v > 0 ? '+' : '−') + Math.abs(v));
   const KNOBS = {
-    gate: { key: 'gate', lo: -80, hi: -20, step: 1, label: 'Гейт', def: () => B.MIC_DEFAULTS[0].gate, show: (v) => (v <= -79 ? 'выкл' : '−' + Math.abs(v)) },
-    comp: { key: 'comp', lo: 1, hi: 10, step: 0.5, label: 'Компр.', def: () => B.MIC_DEFAULTS[0].comp, show: (v) => (v <= 1.04 ? 'выкл' : v + ':1') }
+    gate: { key: 'gate', lo: -80, hi: -20, step: 1, label: 'Гейт', def: () => B.MIC_DEFAULTS[0].gate, show: (v) => (v <= -79 ? 'выкл' : '−' + Math.abs(v)), get: (i) => B.micOf(i).gate },
+    comp: { key: 'comp', lo: 1, hi: 10, step: 0.5, label: 'Компр.', def: () => B.MIC_DEFAULTS[0].comp, show: (v) => (v <= 1.04 ? 'выкл' : v + ':1'), get: (i) => B.micOf(i).comp },
+    bass: { key: 'bass', lo: -12, hi: 12, step: 0.5, label: 'Бас', def: () => 0, show: eqShow, eq: true, get: (i) => B.eqOf('strip', i).bass },
+    treble: { key: 'treble', lo: -12, hi: 12, step: 0.5, label: 'ВЧ', def: () => 0, show: eqShow, eq: true, get: (i) => B.eqOf('strip', i).treble }
   };
   let knob = null, knobLast = { id: '', t: 0 };
   function paintKnob(el, frac) {
@@ -87,7 +91,7 @@
   function knobSet(k, i, v, el) {
     const d = KNOBS[k];
     v = Math.max(d.lo, Math.min(d.hi, Math.round(v / d.step) * d.step));
-    B.setMic(i, d.key, v);
+    if (d.eq) B.setEq('strip', i, d.key, v); else B.setMic(i, d.key, v);
     paintKnob(el, (v - d.lo) / (d.hi - d.lo));
     const lab = document.querySelector(`[data-klabel="${k}${i}"]`);
     if (lab) lab.textContent = d.show(v);
@@ -95,12 +99,12 @@
   }
   document.addEventListener('pointerdown', (ev) => {
     const el = ev.target.closest('[data-knob]');
-    if (!el || !KNOBS[el.dataset.knob] || !st() || !st().mic) return;
+    if (!el || !KNOBS[el.dataset.knob] || !st()) return;
     const k = el.dataset.knob, i = +el.dataset.i, d = KNOBS[k];
     const id = k + i, now = Date.now();
     if (knobLast.id === id && now - knobLast.t < 400) { knobLast = { id: '', t: 0 }; knobSet(k, i, d.def(), el); ev.preventDefault(); return; }
     knobLast = { id, t: now };
-    const cur = B.micOf(i)[d.key];
+    const cur = d.get(i);
     knob = { el, k, i, y: ev.clientY, frac: (cur - d.lo) / (d.hi - d.lo) };
     try { el.setPointerCapture(ev.pointerId); } catch (e) { /* не критично */ }
     ev.preventDefault();

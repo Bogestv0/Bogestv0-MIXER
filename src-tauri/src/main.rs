@@ -5,7 +5,7 @@ mod obs;
 
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -25,6 +25,13 @@ struct Engine {
     boot: AtomicU64,
     /// Номер запуска. Старый движок после перезапуска больше ничего не сообщает окну.
     gen: AtomicU64,
+}
+
+/// Настройки оболочки с экрана «Настройки» (трей, закрытие окна). Читает обработчик закрытия окна.
+struct Prefs {
+    /// Закрытие окна сворачивает в трей (если трей включён). Иначе программа закрывается целиком.
+    hide_on_close: AtomicBool,
+    tray: AtomicBool,
 }
 
 fn engine_path() -> std::path::PathBuf {
@@ -193,6 +200,36 @@ fn obs_save_collection(name: String, json: String) -> Result<String, String> {
     obs::save_collection(&name, &json)
 }
 
+/// Применяет настройки оболочки: значок в трее, «поверх всех окон» и поведение при закрытии окна.
+fn apply_prefs(app: &AppHandle, tray: bool, hide_on_close: bool, on_top: bool) {
+    if let Some(p) = app.try_state::<Prefs>() {
+        p.tray.store(tray, Ordering::SeqCst);
+        p.hide_on_close.store(hide_on_close, Ordering::SeqCst);
+    }
+    if let Some(t) = app.tray_by_id("main-tray") {
+        let _ = t.set_visible(tray);
+    }
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.set_always_on_top(on_top);
+    }
+}
+
+/// Окно присылает сюда настройки «Значок в трее», «Закрытие окна сворачивает в трей» и «Поверх всех окон».
+#[tauri::command]
+fn app_prefs(app: AppHandle, tray: bool, hide_on_close: bool, on_top: bool) {
+    apply_prefs(&app, tray, hide_on_close, on_top);
+}
+
+/// Читает раздел `app` файла настроек (без окна): нужно до того, как окно загрузилось.
+fn read_app_prefs(app: &AppHandle) -> serde_json::Value {
+    settings_path(app)
+        .ok()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .and_then(|v| v.get("app").cloned())
+        .unwrap_or(serde_json::Value::Null)
+}
+
 fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
@@ -206,11 +243,17 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![engine_send, engine_info, engine_restart, settings_load, settings_save, obs_probe, obs_save_collection])
+        .invoke_handler(tauri::generate_handler![engine_send, engine_info, engine_restart, settings_load, settings_save, obs_probe, obs_save_collection, app_prefs])
         .setup(|app| {
             let engine = Engine { stdin: Mutex::new(None), child: Mutex::new(None), boot: AtomicU64::new(0), gen: AtomicU64::new(0) };
             start_engine(app.handle(), &engine);
             app.manage(engine);
+
+            // Настройки оболочки из файла настроек: нужны сразу, до загрузки окна.
+            let a = read_app_prefs(app.handle());
+            let flag = |key: &str, default: bool| a.get(key).and_then(|v| v.as_bool()).unwrap_or(default);
+            let (tray_on, hide_on_close, show_on_start, on_top) = (flag("tray", true), flag("hideOnClose", true), flag("showOnStart", true), flag("onTop", false));
+            app.manage(Prefs { hide_on_close: AtomicBool::new(hide_on_close), tray: AtomicBool::new(tray_on) });
 
             let show = MenuItem::with_id(app, "show", "Открыть микшер", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
@@ -237,13 +280,27 @@ fn main() {
                     }
                 })
                 .build(app)?;
+            apply_prefs(app.handle(), tray_on, hide_on_close, on_top);
+            // Окно создаётся скрытым (tauri.conf.json). Без значка в трее скрытое окно не открыть, поэтому тогда показываем всегда.
+            if show_on_start || !tray_on {
+                show_main(app.handle());
+            }
             Ok(())
         })
-        // Закрытие окна сворачивает в трей: звук продолжает работать.
+        // Закрытие окна сворачивает в трей (звук продолжает работать), если это включено и трей виден. Иначе программа закрывается.
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
+                let app = window.app_handle();
+                let hide = app
+                    .try_state::<Prefs>()
+                    .map(|p| p.hide_on_close.load(Ordering::SeqCst) && p.tray.load(Ordering::SeqCst))
+                    .unwrap_or(true);
+                if hide {
+                    api.prevent_close();
+                    let _ = window.hide();
+                } else {
+                    app.exit(0);
+                }
             }
         })
         .build(tauri::generate_context!())

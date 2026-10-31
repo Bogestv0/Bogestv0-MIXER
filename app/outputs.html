@@ -88,7 +88,7 @@ html,body{height:100%;overflow:hidden}
     <div style="background:var(--signal-soft);border-radius:20px;padding:18px 22px;display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between">
       <div style="min-width:0">
         <div style="font:600 20px/1.2 var(--f-display);margin-bottom:4px">Громкость выходов</div>
-        <div style="font-size:13px;color:var(--muted)">Общая громкость и Mute каждого выхода. Маршруты дорожек остаются на странице «Микшер». Регуляторы «Бас» и «ВЧ» появятся позже.</div>
+        <div style="font-size:13px;color:var(--muted)">Общая громкость и Mute каждого выхода. Маршруты дорожек остаются на странице «Микшер». Бас и ВЧ на шине: потяните ручку вверх или вниз, двойной щелчок сбрасывает на 0 дБ.</div>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:8px">
         <button data-act="restart" title="Остановить и заново запустить звуковой движок (Ctrl+R). Устройства и настройки вернутся сами." style="min-height:44px;box-sizing:border-box;padding:9px 18px;border-radius:12px;border:1px solid var(--signal);background:none;color:var(--signal);font:500 14px var(--f-body)">Перезапустить движок</button>
@@ -136,6 +136,16 @@ html,body{height:100%;overflow:hidden}
                   </div>
                 </div>
               </div>
+              <div style="display:flex;justify-content:space-around">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+                  <div data-beq="{{m.k}}:bass" title="{{m.bTitle}}" style="width:36px;height:36px;border-radius:50%;background:conic-gradient(from -135deg,var(--signal) 0deg,var(--signal) {{m.bDeg}}deg,var(--line) {{m.bDeg}}deg,var(--line) 270deg,transparent 270deg);display:flex;align-items:center;justify-content:center;touch-action:none;cursor:ns-resize"><div style="width:28px;height:28px;border-radius:50%;background:var(--surface);position:relative;transform:rotate({{m.bRot}}deg)"><div style="position:absolute;left:13px;top:3px;width:2px;height:8px;border-radius:1px;background:var(--fg)"></div></div></div>
+                  <span data-beqlabel="{{m.k}}:bass" style="font-size:12px;color:var(--muted)">Бас</span>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+                  <div data-beq="{{m.k}}:treble" title="{{m.tTitle}}" style="width:36px;height:36px;border-radius:50%;background:conic-gradient(from -135deg,var(--signal) 0deg,var(--signal) {{m.tDeg}}deg,var(--line) {{m.tDeg}}deg,var(--line) 270deg,transparent 270deg);display:flex;align-items:center;justify-content:center;touch-action:none;cursor:ns-resize"><div style="width:28px;height:28px;border-radius:50%;background:var(--surface);position:relative;transform:rotate({{m.tRot}}deg)"><div style="position:absolute;left:13px;top:3px;width:2px;height:8px;border-radius:1px;background:var(--fg)"></div></div></div>
+                  <span data-beqlabel="{{m.k}}:treble" style="font-size:12px;color:var(--muted)">ВЧ</span>
+                </div>
+              </div>
               <button data-bmute="{{m.k}}" aria-pressed="{{m.muted}}" style="min-height:38px;border-radius:12px;font:500 13px var(--f-body);{{m.muteStyle}}">Mute</button>
             </div>
           </sc-for>
@@ -180,6 +190,16 @@ html,body{height:100%;overflow:hidden}
                   </div>
                 </div>
               </div>
+              <div style="display:flex;justify-content:space-around">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+                  <div data-beq="{{m.k}}:bass" title="{{m.bTitle}}" style="width:36px;height:36px;border-radius:50%;background:conic-gradient(from -135deg,var(--signal) 0deg,var(--signal) {{m.bDeg}}deg,var(--line) {{m.bDeg}}deg,var(--line) 270deg,transparent 270deg);display:flex;align-items:center;justify-content:center;touch-action:none;cursor:ns-resize"><div style="width:28px;height:28px;border-radius:50%;background:var(--surface);position:relative;transform:rotate({{m.bRot}}deg)"><div style="position:absolute;left:13px;top:3px;width:2px;height:8px;border-radius:1px;background:var(--fg)"></div></div></div>
+                  <span data-beqlabel="{{m.k}}:bass" style="font-size:12px;color:var(--muted)">Бас</span>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+                  <div data-beq="{{m.k}}:treble" title="{{m.tTitle}}" style="width:36px;height:36px;border-radius:50%;background:conic-gradient(from -135deg,var(--signal) 0deg,var(--signal) {{m.tDeg}}deg,var(--line) {{m.tDeg}}deg,var(--line) 270deg,transparent 270deg);display:flex;align-items:center;justify-content:center;touch-action:none;cursor:ns-resize"><div style="width:28px;height:28px;border-radius:50%;background:var(--surface);position:relative;transform:rotate({{m.tRot}}deg)"><div style="position:absolute;left:13px;top:3px;width:2px;height:8px;border-radius:1px;background:var(--fg)"></div></div></div>
+                  <span data-beqlabel="{{m.k}}:treble" style="font-size:12px;color:var(--muted)">ВЧ</span>
+                </div>
+              </div>
               <button data-bmute="{{m.k}}" aria-pressed="{{m.muted}}" style="min-height:38px;border-radius:12px;font:500 13px var(--f-body);{{m.muteStyle}}">Mute</button>
             </div>
           </sc-for>
@@ -206,6 +226,8 @@ class Component extends DCLogic {
     const mk = (k, key, id, role) => {
       const name = dev[key] || '';
       const b = st ? st.buses[k] : { g: 0, m: 0 };
+      const eq = B.eqOf('bus', k);
+      const sg = (v) => (v === 0 ? '0 дБ' : (v > 0 ? '+' : '−') + Math.abs(v) + ' дБ');
       let status, tone, hint;
       if (!st) { status = 'Нет связи'; tone = 'warn'; hint = 'Движок не отвечает. Попробуйте Ctrl+R.'; }
       else if (!name) { status = 'Не назначено'; tone = 'muted'; hint = 'Выберите устройство на экране «Устройства».'; }
@@ -218,6 +240,10 @@ class Component extends DCLogic {
         nameColor: name ? 'var(--fg)' : 'var(--muted)',
         g: b.g, dbText: fmt(b.g), pos: pos(b.g),
         meterL: M ? top(M.b[k][0]) : 100, meterR: M ? top(M.b[k][1]) : 100,
+        bDeg: Math.round((eq.bass + 12) / 24 * 270), bRot: Math.round((eq.bass + 12) / 24 * 270) - 135,
+        tDeg: Math.round((eq.treble + 12) / 24 * 270), tRot: Math.round((eq.treble + 12) / 24 * 270) - 135,
+        bTitle: 'Бас: ' + sg(eq.bass) + '. Тяните вверх и вниз, двойной щелчок сбрасывает на 0 дБ',
+        tTitle: 'ВЧ: ' + sg(eq.treble) + '. Тяните вверх и вниз, двойной щелчок сбрасывает на 0 дБ',
         muted: !!b.m,
         muteStyle: b.m ? 'background:var(--bad);color:#fff;border:1px solid var(--bad)' : 'background:none;color:var(--fg);border:1px solid var(--line)'
       };

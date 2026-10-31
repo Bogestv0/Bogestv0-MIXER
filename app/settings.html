@@ -40,18 +40,15 @@ html,body{height:100%;overflow:hidden}
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>
       Выходы
     </a>
-    <button style="display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-align:left">
+    <a href="scenes.html" style="display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-align:left;box-sizing:border-box;text-decoration:none">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="7" height="7" rx="2"/><rect x="14" y="4" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>
-      Сцены
-    </button>
-    <button style="display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-align:left">
+      Сцены</a>
+    <a href="effects.html" style="display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-align:left;box-sizing:border-box;text-decoration:none">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h3l2-6 4 12 3-9 2 3h4"/></svg>
-      Эффекты
-    </button>
-    <button style="display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-align:left">
+      Эффекты</a>
+    <a href="record.html" style="display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-align:left;box-sizing:border-box;text-decoration:none">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
-      Запись
-    </button>
+      Запись</a>
     <a href="devices.html" style="display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;min-height:44px;padding:0 12px;border-radius:12px;background:none;color:var(--muted);font:500 15px var(--f-body);text-decoration:none">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="3"/><circle cx="12" cy="14" r="3.5"/><circle cx="12" cy="7" r="1"/></svg>
       Устройства
@@ -88,7 +85,7 @@ html,body{height:100%;overflow:hidden}
     <!-- hero -->
     <div style="background:var(--signal-soft);border-radius:20px;padding:18px 22px;display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between">
       <div style="min-width:0">
-        <div style="font:600 20px/1.2 var(--f-display);margin-bottom:4px">Микшер помнит твои настройки</div>
+        <div style="font:600 20px/1.2 var(--f-display);margin-bottom:4px">Микшер помнит ваши настройки</div>
         <div style="font-size:13px;color:var(--muted)">Маршруты, громкость, усиление микрофона и выбранные устройства возвращаются при следующем запуске.</div>
       </div>
       <div style="display:flex;align-items:center;gap:12px">
@@ -128,10 +125,17 @@ html,body{height:100%;overflow:hidden}
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0;border-top:1px solid var(--line)">
             <div style="min-width:0">
+              <div style="font-weight:600;line-height:1.3">Дорожки и аудио</div>
+              <div style="font-size:13px;color:var(--muted)">Названия и скрытие дорожек, буфер, задержка выходов, лимитер.</div>
+            </div>
+            <a href="strips.html" style="display:inline-flex;align-items:center;min-height:36px;box-sizing:border-box;padding:0 14px;border-radius:10px;background:none;color:var(--fg);border:1px solid var(--line);font:500 13px var(--f-body);white-space:nowrap;text-decoration:none">Открыть</a>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0;border-top:1px solid var(--line)">
+            <div style="min-width:0">
               <div style="font-weight:600;line-height:1.3">Перезапустить аудио-движок</div>
               <div style="font-size:13px;color:var(--muted)">Если пропал звук, а переподключение не помогло.</div>
             </div>
-            <button style="min-height:36px;padding:0 14px;border-radius:10px;background:none;color:var(--fg);border:1px solid var(--line);font:500 13px var(--f-body);white-space:nowrap;display:flex;align-items:center;gap:8px">
+            <button onClick="{{restart}}" style="min-height:36px;padding:0 14px;border-radius:10px;background:none;color:var(--fg);border:1px solid var(--line);font:500 13px var(--f-body);white-space:nowrap;display:flex;align-items:center;gap:8px">
               Перезапустить <span style="font:400 11.5px var(--f-mono);color:var(--muted)">Ctrl+R</span>
             </button>
           </div>
@@ -156,16 +160,17 @@ html,body{height:100%;overflow:hidden}
               <div style="font:400 12.5px var(--f-mono);color:var(--muted)">bogestv0-settings.json</div>
             </div>
             <div style="display:flex;gap:6px">
-              <button style="min-height:36px;padding:0 14px;border-radius:10px;background:none;color:var(--fg);border:1px solid var(--line);font:500 13px var(--f-body)">Загрузить…</button>
-              <button style="min-height:36px;padding:0 14px;border-radius:10px;background:none;color:var(--fg);border:1px solid var(--line);font:500 13px var(--f-body)">Сохранить как…</button>
+              <input id="load-file" type="file" accept=".json,application/json" hidden>
+              <button onClick="{{loadFile}}" style="min-height:36px;padding:0 14px;border-radius:10px;background:none;color:var(--fg);border:1px solid var(--line);font:500 13px var(--f-body)">Загрузить…</button>
+              <button onClick="{{saveAs}}" style="min-height:36px;padding:0 14px;border-radius:10px;background:none;color:var(--fg);border:1px solid var(--line);font:500 13px var(--f-body)">Сохранить как…</button>
             </div>
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0;border-top:1px solid var(--line)">
             <div style="min-width:0">
               <div style="font-weight:600;line-height:1.3">Сбросить все настройки</div>
-              <div style="font-size:13px;color:var(--muted)">Вернёт микшер к заводскому состоянию.</div>
+              <div style="font-size:13px;color:var(--muted)">Громкости, маршруты, микрофоны, названия дорожек и эти настройки вернутся к заводским. Устройства останутся назначенными.</div>
             </div>
-            <button onClick="{{reset}}" style="min-height:36px;padding:0 14px;border-radius:10px;background:none;color:var(--bad);border:1px solid var(--bad);font:500 13px var(--f-body)">Сбросить</button>
+            <button onClick="{{reset}}" style="min-height:36px;padding:0 14px;border-radius:10px;{{resetStyle}};border:1px solid var(--bad);font:500 13px var(--f-body)">{{resetText}}</button>
           </div>
         </div>
       </div>
@@ -240,34 +245,28 @@ html,body{height:100%;overflow:hidden}
 class Component extends DCLogic {
   constructor(props) {
     super(props);
-    this.defaults = {
-      reconnect: true, scope: 'all',
-      loadOnStart: true, autosave: true,
-      tray: true, hideOnClose: true, showOnStart: false, onTop: false, lockGui: false,
-      autostart: true
-    };
-    this.state = { ...this.defaults, saved: true };
+    this.state = { confirmReset: false };
+    // Настройки программы хранит мост (Bridge.settings.app); экран только показывает их и меняет.
+    Bridge.on((t) => { if (['app', 'unsaved', 'ready', 'conn'].includes(t) && window.__dc) window.__dc.setState({}); });
   }
 
   renderVals() {
-    const st = this.state;
-    const touch = (patch) => {
-      const next = { ...patch };
-      next.saved = (patch.autosave !== undefined ? patch.autosave : st.autosave);
-      this.setState(next);
+    const B = window.Bridge;
+    const a = B.settings.app;
+    const T = window.__TAURI__;
+    const inTauri = B.mode === 'tauri';
+    const sw = (key, title, desc, border, opts) => {
+      opts = opts || {};
+      const on = !!a[key] && !opts.off;
+      return {
+        title, desc: opts.note ? desc + ' ' + opts.note : desc, border: border || 'none', on,
+        track: on ? 'background:var(--signal);border:1px solid var(--signal)' : 'background:var(--surface-2);border:1px solid var(--muted)' + (opts.off ? ';opacity:.5;cursor:not-allowed' : ''),
+        knob: on ? 'left:22px;background:var(--signal-ink)' : 'left:2px;background:var(--muted)',
+        toggle: () => { if (opts.off) return; B.setApp({ [key]: !a[key] }); }
+      };
     };
-    const sw = (key, title, desc, border) => ({
-      title, desc, border: border || 'none',
-      on: !!st[key],
-      track: st[key]
-        ? 'background:var(--signal);border:1px solid var(--signal)'
-        : 'background:var(--surface-2);border:1px solid var(--muted)',
-      knob: st[key]
-        ? 'left:22px;background:var(--signal-ink)'
-        : 'left:2px;background:var(--muted)',
-      toggle: () => touch({ [key]: !st[key] })
-    });
     const line = '1px solid var(--line)';
+    const needApp = inTauri ? '' : 'Работает в установленном приложении.';
 
     const connRows = [
       sw('reconnect', 'Переподключать устройство автоматически',
@@ -278,36 +277,61 @@ class Component extends DCLogic {
       { id: 'all', label: 'Все устройства' }
     ].map((o) => ({
       label: o.label,
-      on: st.scope === o.id,
-      style: st.scope === o.id
+      on: a.scope === o.id,
+      style: a.scope === o.id
         ? 'background:var(--signal);color:var(--signal-ink);border:1px solid var(--signal)'
         : 'background:var(--surface);color:var(--fg);border:1px solid var(--line)',
-      pick: () => touch({ scope: o.id })
+      pick: () => B.setApp({ scope: o.id })
     }));
 
     const saveRows = [
-      sw('loadOnStart', 'Загружать настройки при запуске', 'Микшер стартует так, как ты его оставил.'),
-      sw('autosave', 'Сохранять изменения сразу', 'Любое действие на микшере записывается в файл без кнопки.', line)
+      sw('loadOnStart', 'Загружать настройки при запуске', 'Микшер стартует так, как вы его оставили. Если выключить, громкости и маршруты начнутся с заводских, устройства вернутся.'),
+      sw('autosave', 'Сохранять изменения сразу', 'Любое действие на микшере записывается в файл без кнопки. Если выключить, сохраняйте кнопкой вверху.', line)
     ];
 
     const bgRows = [
-      sw('tray', 'Значок в трее', 'Микшер живёт рядом с часами, и его можно открыть одним щелчком.'),
-      sw('hideOnClose', 'Закрытие окна сворачивает в трей', 'Окно скрывается, а звук продолжает работать в фоне.', line),
-      sw('showOnStart', 'Показывать окно при запуске', 'Если выключить, микшер стартует сразу в трей.', line),
-      sw('onTop', 'Поверх всех окон', 'Микшер остаётся на виду над игрой или OBS.', line),
-      sw('lockGui', 'Заблокировать интерфейс', 'Фейдеры и кнопки не сдвинутся случайно.', line)
+      sw('tray', 'Значок в трее', 'Микшер живёт рядом с часами, и его можно открыть одним щелчком. ' + needApp),
+      sw('hideOnClose', 'Закрытие окна сворачивает в трей', 'Окно скрывается, а звук продолжает работать в фоне. Если выключить (или нет значка в трее), закрытие окна закрывает программу.', line),
+      sw('showOnStart', 'Показывать окно при запуске', 'Если выключить, микшер стартует сразу в трей (нужен значок в трее).', line),
+      sw('onTop', 'Поверх всех окон', 'Микшер остаётся на виду над игрой или OBS. ' + needApp, line),
+      sw('lockGui', 'Заблокировать интерфейс', 'Фейдеры, крутилки и кнопки не сдвинутся случайно. Меню и эти настройки работают.', line)
     ];
     const startRows = [
-      sw('autostart', 'Запускать вместе с Windows', 'Микшер включается при входе в систему, и звук работает сразу.')
+      sw('autostart', 'Запускать вместе с Windows', 'Появится в этапе 8.2 (автозапуск и обновление драйвера).', 'none', { off: true })
     ];
 
+    const unsaved = !!B.unsaved;
     return {
-      connRows, scopes, scopeOpacity: st.reconnect ? 1 : 0.5,
+      connRows, scopes, scopeOpacity: a.reconnect ? 1 : 0.5,
       saveRows, bgRows, startRows,
-      statusText: st.saved ? 'Всё сохранено' : 'Есть несохранённые изменения',
-      statusStyle: st.saved ? 'background:var(--ok-soft);color:var(--ok)' : 'background:var(--warn-soft);color:var(--warn)',
-      save: () => this.setState({ saved: true }),
-      reset: () => this.setState({ ...this.defaults, saved: true })
+      statusText: unsaved ? 'Есть несохранённые изменения' : 'Всё сохранено',
+      statusStyle: unsaved ? 'background:var(--warn-soft);color:var(--warn)' : 'background:var(--ok-soft);color:var(--ok)',
+      save: () => B.saveSettings().then(() => B.notice('Настройки сохранены.')),
+      restart: () => B.restartEngine(false),
+      saveAs: () => B.exportSettings(),
+      loadFile: () => {
+        const inp = document.getElementById('load-file');
+        if (!inp) return;
+        inp.value = '';
+        inp.onchange = async () => {
+          const f = inp.files && inp.files[0];
+          if (!f) return;
+          try { await B.importSettings(await f.text()); B.notice('Настройки загружены из файла «' + f.name + '».'); }
+          catch (e) { B.lastError = e.message || String(e); B.notice(B.lastError); }
+        };
+        inp.click();
+      },
+      resetText: this.state.confirmReset ? 'Точно сбросить?' : 'Сбросить',
+      resetStyle: this.state.confirmReset ? 'background:var(--bad);color:#fff' : 'background:none;color:var(--bad)',
+      reset: () => {
+        if (!this.state.confirmReset) {
+          this.setState({ confirmReset: true });
+          setTimeout(() => this.setState({ confirmReset: false }), 4000);
+          return;
+        }
+        this.setState({ confirmReset: false });
+        B.resetAll().then(() => B.notice('Настройки сброшены к заводским.'));
+      }
     };
   }
 }

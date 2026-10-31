@@ -207,7 +207,7 @@ static int selftest_devices() {
         check(m.buses[1].gain_db.load() == 12.0f && m.buses[2].gain_db.load() == -48.0f, "шина: фейдер ограничен -48…+12 дБ");
         m.command("set bus 3 mute 1");
         check(m.buses[3].mute.load() && !m.buses[4].mute.load(), "шина: Mute включается только у своей шины");
-        check(!m.command("set bus 7 gain 0").empty() && !m.command("set bus 0 bass 3").empty(), "шина: неверный номер и неизвестное свойство дают ошибку");
+        check(!m.command("set bus 7 gain 0").empty() && !m.command("set bus 0 pan 3").empty(), "шина: неверный номер и неизвестное свойство дают ошибку");
 
         const std::string dev = m.debug_name(false);
         if (dev.empty()) { std::printf("пропущено: нет устройств-пустышек\n"); }
@@ -732,6 +732,115 @@ static int fake_driver(int seconds) {
     return 0;
 }
 
+// ---------- проверка эквалайзера, задержки и аудио-параметров (этап 5) ----------
+static float eq_gain_db(bg::Eq& e, float hz) {
+    // Синус через фильтр, после прогрева меряем размах.
+    const size_t n = 48000;
+    std::vector<float> x(n * 2);
+    for (size_t i = 0; i < n; ++i) x[i * 2] = x[i * 2 + 1] = 0.25f * static_cast<float>(std::sin(2.0 * 3.14159265358979 * hz * i / 48000.0));
+    e.process(x.data(), n);
+    float peak = 0.0f;
+    for (size_t i = n / 2; i < n; ++i) peak = std::max(peak, std::fabs(x[i * 2]));
+    return bg::lin_to_db(peak / 0.25f);
+}
+
+static int selftest_eq() {
+    int bad = 0;
+    auto check = [&](bool ok, const char* what) { std::printf("%s %s\n", ok ? "ok    " : "ОШИБКА", what); if (!ok) ++bad; };
+    {   // выключенный эквалайзер не меняет звук ни на бит
+        bg::Eq e;
+        std::vector<float> x(512 * 2), y;
+        for (size_t i = 0; i < x.size(); ++i) x[i] = 0.3f * static_cast<float>(std::sin(0.01 * i));
+        y = x;
+        e.process(y.data(), 512);
+        check(x == y, "бас/ВЧ: на 0 дБ звук проходит без изменений");
+    }
+    {
+        bg::Eq e; e.bass_db = 12.0f;
+        const float lo = eq_gain_db(e, 40.0f);
+        bg::Eq e2; e2.bass_db = 12.0f;
+        const float mid = eq_gain_db(e2, 2000.0f);
+        check(lo > 9.0f && lo < 12.6f, "бас +12 дБ: на 40 Гц подъём около +10…12 дБ");
+        check(std::fabs(mid) < 0.5f, "бас +12 дБ: на 2 кГц звук не меняется");
+    }
+    {
+        bg::Eq e; e.bass_db = -12.0f;
+        const float lo = eq_gain_db(e, 40.0f);
+        check(lo < -9.0f && lo > -12.6f, "бас −12 дБ: на 40 Гц спад около −10…−12 дБ");
+    }
+    {
+        bg::Eq e; e.treble_db = 12.0f;
+        const float hi = eq_gain_db(e, 16000.0f);
+        bg::Eq e2; e2.treble_db = 12.0f;
+        const float mid = eq_gain_db(e2, 200.0f);
+        check(hi > 9.0f && hi < 12.6f, "ВЧ +12 дБ: на 16 кГц подъём около +10…12 дБ");
+        check(std::fabs(mid) < 0.5f, "ВЧ +12 дБ: на 200 Гц звук не меняется");
+    }
+    {   // включение и выключение на ходу не даёт скачков и «залипшего» звука
+        bg::Eq e; e.bass_db = 9.0f;
+        std::vector<float> x(4800 * 2, 0.0f);
+        e.process(x.data(), 4800);
+        e.bass_db = 0.0f;
+        std::vector<float> y(480 * 2);
+        for (size_t i = 0; i < y.size(); ++i) y[i] = 0.2f * static_cast<float>(std::sin(0.05 * i));
+        auto z = y;
+        e.process(y.data(), 480);
+        check(y == z, "бас: после возврата на 0 дБ обработка снова пропускается целиком");
+        bool fin = true;
+        bg::Eq e3; e3.bass_db = 12.0f; e3.treble_db = -12.0f;
+        std::vector<float> w(48000 * 2);
+        uint32_t r = 7;
+        for (float& v : w) { r ^= r << 13; r ^= r >> 17; r ^= r << 5; v = (static_cast<float>(r & 0xFFFF) / 32768.0f - 1.0f) * 0.5f; }
+        e3.process(w.data(), 48000);
+        for (float v : w) if (!std::isfinite(v) || std::fabs(v) > 8.0f) fin = false;
+        check(fin, "бас +12 и ВЧ −12 на шуме: числа конечны, без взрыва");
+    }
+    {   // задержка выхода
+        bg::DelayLine d;
+        std::vector<float> x(2000 * 2, 0.0f);
+        x[0] = 1.0f; x[1] = -1.0f;
+        d.frames = 480;
+        d.process(x.data(), 1000);
+        d.process(x.data() + 2000, 1000);
+        bool at = x[480 * 2] == 1.0f && x[480 * 2 + 1] == -1.0f, other = true;
+        for (size_t i = 0; i < 2000; ++i) if (i != 480 && (x[i * 2] != 0.0f || x[i * 2 + 1] != 0.0f)) other = false;
+        check(at && other, "задержка 10 мс: импульс сдвинулся ровно на 480 кадров, остальное тишина");
+        d.frames = 0;
+        std::vector<float> y(100 * 2, 0.5f);
+        d.process(y.data(), 100);
+        bool same = true;
+        for (float v : y) same = same && v == 0.5f;
+        check(same, "задержка 0 мс: звук идёт напрямую");
+    }
+    {   // команды и состояние
+        ma_backend nb[] = {ma_backend_null};
+        ma_context ctx;
+        ma_context_config cc = ma_context_config_init();
+        if (ma_context_init(nb, 1, &cc, &ctx) != MA_SUCCESS) { std::printf("пропущено: нулевой звуковой бэкенд недоступен\n"); return bad; }
+        {
+            bg::Mixer m(&ctx, nullptr);
+            check(m.command("set strip 3 bass 6").empty() && m.command("set strip 3 treble -4.5").empty(), "команды set strip bass/treble приняты");
+            check(m.command("set strip 3 bass 99").empty() && m.strips[3].eq.bass_db.load() == 12.0f, "бас зажат до +12 дБ");
+            check(m.command("set strip 3 treble -99").empty() && m.strips[3].eq.treble_db.load() == -12.0f, "ВЧ зажат до −12 дБ");
+            check(!m.command("set strip 3 bass abc").empty() && !m.command("set strip 99 bass 1").empty(), "неверные значения отклоняются");
+            check(m.command("set bus 1 bass 3").empty() && m.buses[1].eq.bass_db.load() == 3.0f, "команда set bus bass");
+            check(m.command("set audio limiter 0").empty() && m.state_json().find("\"lim\":0") != std::string::npos, "лимитер выключается, состояние это показывает");
+            check(m.command("set audio limiter 1").empty() && m.state_json().find("\"lim\":1") != std::string::npos, "лимитер включается обратно");
+            check(m.command("set audio delay 1 12.5").empty() && m.buses[1].delay.frames.load() == 600, "задержка A2 12,5 мс = 600 кадров");
+            check(m.command("set audio delay 9 5").size() > 0 && m.command("set audio delay 0 9999").empty() && m.buses[0].delay.frames.load() == 24000, "задержка: неверный выход отклонён, предел 500 мс");
+            check(m.command("set audio buffer 2000").empty() && m.state_json().find("\"buf\":1024") != std::string::npos, "буфер зажат до 1024 кадров");
+            check(m.command("set audio reconnect 1").empty() && m.state_json().find("\"rc\":1") != std::string::npos, "режим переподключения хранится");
+            check(!m.command("set audio nonsense 1").empty(), "неизвестное аудио-свойство отклонено");
+            const std::string js = m.state_json();
+            int depth = 0; bool instr = false, okj = true;
+            for (size_t i = 0; i < js.size(); ++i) { const char c = js[i]; if (c == '"' && (i == 0 || js[i - 1] != '\\')) instr = !instr; if (instr) continue; if (c == '{' || c == '[') ++depth; else if (c == '}' || c == ']') { if (--depth < 0) okj = false; } }
+            check(okj && depth == 0 && js.find("\"eq\":{\"s\":[[") != std::string::npos && js.find("\"info\":{\"hw1\":null") != std::string::npos, "состояние: скобки сходятся, есть eq, aud и info");
+        }
+        ma_context_uninit(&ctx);
+    }
+    return bad;
+}
+
 static int selftest() {
     int bad = 0;
     auto check = [&](bool ok, const char* what) { std::printf("%s %s\n", ok ? "ok    " : "ОШИБКА", what); if (!ok) ++bad; };
@@ -761,6 +870,7 @@ static int selftest() {
     bad += selftest_shm();
     bad += selftest_inbuf();
     bad += selftest_driver_mixer();
+    bad += selftest_eq();
     std::printf(bad ? "\nЕсть ошибки: %d\n" : "\nВсе проверки пройдены.\n", bad);
     return bad ? 1 : 0;
 }

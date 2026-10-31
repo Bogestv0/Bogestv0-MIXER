@@ -12,7 +12,7 @@
   let raf = 0;
   let focusK = null;     // у какого фейдера фокус с клавиатуры (после перерисовки возвращаем)
 
-  function rerender() { if (!drag && window.__dc) window.__dc.setState({}); }
+  function rerender() { if (!drag && !knob && window.__dc) window.__dc.setState({}); }
 
   /* ---------- клики: Mute и перезапуск ---------- */
   document.addEventListener('click', (ev) => {
@@ -83,6 +83,46 @@
     focusK = k;
     setGainLocal(k, db);
   });
+  /* ---------- крутилки «Бас» и «ВЧ» шины ---------- */
+  // Тянуть вверх: значение растёт. 150 пикселей = весь диапазон −12…+12 дБ. Двойной щелчок = 0 дБ.
+  let knob = null, knobLast = { id: '', t: 0 };
+  const eqShow = (v) => (v === 0 ? '0 дБ' : (v > 0 ? '+' : '−') + Math.abs(v));
+  function paintKnob(el, v) {
+    const deg = Math.round((v + 12) / 24 * 270);
+    el.style.background = `conic-gradient(from -135deg,var(--signal) 0deg,var(--signal) ${deg}deg,var(--line) ${deg}deg,var(--line) 270deg,transparent 270deg)`;
+    if (el.firstElementChild) el.firstElementChild.style.transform = `rotate(${deg - 135}deg)`;
+  }
+  function knobSet(el, k, key, v) {
+    v = Math.max(-12, Math.min(12, Math.round(v * 2) / 2));
+    B.setEq('bus', k, key, v);
+    paintKnob(el, v);
+    const lab = document.querySelector(`[data-beqlabel="${k}:${key}"]`);
+    if (lab) lab.textContent = eqShow(v);
+    return v;
+  }
+  document.addEventListener('pointerdown', (ev) => {
+    const el = ev.target.closest('[data-beq]');
+    if (!el || !st()) return;
+    const [ks, key] = el.dataset.beq.split(':'), k = +ks, now = Date.now(), id = el.dataset.beq;
+    if (knobLast.id === id && now - knobLast.t < 400) { knobLast = { id: '', t: 0 }; knobSet(el, k, key, 0); ev.preventDefault(); return; }
+    knobLast = { id, t: now };
+    knob = { el, k, key, y: ev.clientY, v: B.eqOf('bus', k)[key] };
+    try { el.setPointerCapture(ev.pointerId); } catch (e) { /* не критично */ }
+    ev.preventDefault();
+  });
+  document.addEventListener('pointermove', (ev) => {
+    if (knob) knobSet(knob.el, knob.k, knob.key, knob.v + (knob.y - ev.clientY) / 150 * 24);
+  });
+  const knobEnd = () => {
+    if (!knob) return;
+    const lab = document.querySelector(`[data-beqlabel="${knob.k}:${knob.key}"]`);
+    if (lab) lab.textContent = knob.key === 'bass' ? 'Бас' : 'ВЧ';
+    knob = null;
+    rerender();
+  };
+  document.addEventListener('pointerup', knobEnd);
+  document.addEventListener('pointercancel', knobEnd);
+
   /* ---------- живые метры ---------- */
   let cache = [];
   function collect() {

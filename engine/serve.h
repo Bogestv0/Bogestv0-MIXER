@@ -10,6 +10,9 @@
 //   set bus K gain ДБ | mute 0/1
 //   set mic I gain 0..30 | gate -80..-20 (-80 = выкл) | hpf 20..300 (20 = выкл) | comp 1..10 (1 = выкл)
 //                | ns 0..3 (выкл / мягкое / сильное / максимум) | nsamt 0..100    (I = 0 или 1, микрофон)
+//   set strip I bass ДБ | treble ДБ     (−12..+12, эквалайзер дорожки: полка 100 Гц и полка 8 кГц)
+//   set bus K bass ДБ | treble ДБ       (то же на шине)
+//   set audio limiter 0/1 | delay K МС (K = 0..2 для A1..A3, 0..500 мс) | buffer КАДРОВ (128..1024) | reconnect 0/1/2
 //   set dev СЛОТ ИМЯ_УСТРОЙСТВА   (пустое имя или "-" отключает слот)
 // Ответы: строки JSON (hello, devices, state, m, err).
 // Драйвер (этап 6.1): если в общей памяти (shm.h) драйвер держит поток на «Bogestv0 Input N», дорожка V(N) берёт звук оттуда
@@ -20,6 +23,7 @@
 #pragma once
 
 #include "dsp.h"
+#include "eq.h"
 #include "inbuf.h"
 #include "mic.h"
 #include "shm.h"
@@ -46,7 +50,7 @@ constexpr int kSlots = 7;
 constexpr int kMics = 2;
 constexpr size_t kMaxBlock = 4096;  // самый большой блок за один проход
 static const char* kSlotNames[kSlots] = {"hw1", "hw2", "a1", "a2", "a3", "b1", "b2"};
-static const char* kEngineVersion = "0.5.4";
+static const char* kEngineVersion = "0.5.7";
 
 // Кольцо «один пишет, один читает» для стерео-кадров. Связывает потоки разных устройств.
 struct Ring {
@@ -110,6 +114,7 @@ struct Strip {
     std::atomic<int> src{SRC_OFF};
     Meter meter;
     Ring ring;
+    Eq eq;                     // бас и ВЧ дорожки
     float cur_gain = 1.0f;     // только аудио-поток
     double phase = 0.0;
     uint32_t rng = 12345u;
@@ -123,6 +128,8 @@ struct Bus {
     std::atomic<bool> mute{false};
     Meter meter;
     Ring ring;
+    Eq eq;                     // бас и ВЧ шины
+    DelayLine delay;           // задержка выхода (только A1..A3)
     float cur_gain = 1.0f;
 };
 
@@ -231,6 +238,8 @@ public:
         std::lock_guard<std::mutex> lk(dev_mu_);
         poll_driver();
         refresh_locked();
+        const int rc = reconnect_.load();   // 0: ничего не возвращаем сами; 1: только A1; 2: все устройства
+        if (rc == 0) return "";
         const auto now = clock::now();
         bool changed = false, master_lost = false;
         std::string err;
@@ -254,7 +263,7 @@ public:
         } else if (master_ < 0) {
             // Нет ведущего устройства: ждём, пока появится любое назначенное устройство выхода.
             bool any = false;
-            for (int s = 2; s < kSlots; ++s) any = any || (!names_[s].empty() && find_id(s, names_[s]));
+            for (int s = 2; s < kSlots; ++s) any = any || ((rc == 2 || s == 2) && !names_[s].empty() && find_id(s, names_[s]));
             if (any && now >= rebuild_at_) {
                 err = rebuild();
                 changed = true;
@@ -265,6 +274,7 @@ public:
             // Остальные назначенные устройства, которые сейчас закрыты, а в системе уже есть: открываем только их.
             for (int s = 0; s < kSlots; ++s) {
                 if (dev_[s] || names_[s].empty() || !find_id(s, names_[s]) || now < retry_at_[s]) continue;
+                if (rc == 1 && s != 2) continue;   // режим «только A1»: остальные устройства сами не возвращаем
                 std::string e;
                 open_slot(s, false, e);
                 if (ok_[s]) {
@@ -334,7 +344,17 @@ public:
         o << "],\"buses\":[";
         for (int k = 0; k < kBuses; ++k)
             o << (k ? "," : "") << "{\"g\":" << buses[k].gain_db.load() << ",\"m\":" << (buses[k].mute.load() ? 1 : 0) << "}";
-        o << "],\"dev\":{";
+        o << "],\"eq\":{\"s\":[";
+        for (int i = 0; i < kStrips; ++i) o << (i ? "," : "") << "[" << strips[i].eq.bass_db.load() << "," << strips[i].eq.treble_db.load() << "]";
+        o << "],\"b\":[";
+        for (int k = 0; k < kBuses; ++k) o << (k ? "," : "") << "[" << buses[k].eq.bass_db.load() << "," << buses[k].eq.treble_db.load() << "]";
+        // Аудио-параметры (этап 5): лимитер выходов, задержка A1..A3 в мс, буфер ведущего устройства (кадры), переподключение 0/1/2.
+        o << "]},\"aud\":{\"lim\":" << (limiter_.load() ? 1 : 0) << ",\"dly\":[";
+        for (int k = 0; k < 3; ++k) o << (k ? "," : "") << buses[k].delay.frames.load() * 1000.0 / kRate;
+        o << "],\"buf\":" << buf_frames_.load() << ",\"rc\":" << reconnect_.load() << "},\"info\":{";
+        for (int s = 0; s < kSlots; ++s)
+            o << (s ? "," : "") << "\"" << kSlotNames[s] << "\":" << (dev_[s] && ok_[s] ? "[" + std::to_string(info_[s].rate) + "," + std::to_string(info_[s].ch) + "," + std::to_string(info_[s].bits) + "]" : std::string("null"));
+        o << "},\"dev\":{";
         for (int s = 0; s < kSlots; ++s) o << (s ? "," : "") << "\"" << kSlotNames[s] << "\":\"" << json_escape(names_[s]) << "\"";
         o << "},\"ok\":{";
         for (int s = 0; s < kSlots; ++s) o << (s ? "," : "") << "\"" << kSlotNames[s] << "\":" << (ok_[s] ? 1 : 0);
@@ -432,6 +452,11 @@ public:
                 int m = s.route.load();
                 s.route = v ? (m | (1 << k)) : (m & ~(1 << k));
             }
+            else if (what == "bass" || what == "treble") {
+                float v; if (!(in >> v) || !std::isfinite(v)) return what + ": нужно число";
+                v = std::max(-kEqMaxDb, std::min(kEqMaxDb, v));
+                (what == "bass" ? s.eq.bass_db : s.eq.treble_db) = v;
+            }
             else if (what == "src") {
                 std::string v; in >> v;
                 if (s.hw) return "у микрофона нет тест-источника";
@@ -461,7 +486,34 @@ public:
             Bus& bus = buses[k];
             if (what == "gain") { float v; if (!(in >> v)) return "gain: нужно число"; bus.gain_db = std::max(-48.0f, std::min(12.0f, v)); }
             else if (what == "mute") { int v; if (!(in >> v)) return "mute: 0 или 1"; bus.mute = v != 0; }
+            else if (what == "bass" || what == "treble") {
+                float v; if (!(in >> v) || !std::isfinite(v)) return what + ": нужно число";
+                v = std::max(-kEqMaxDb, std::min(kEqMaxDb, v));
+                (what == "bass" ? bus.eq.bass_db : bus.eq.treble_db) = v;
+            }
             else return "шина: неизвестное свойство " + what;
+        } else if (b == "audio") {
+            std::string what; in >> what;
+            if (what == "limiter") { int v; if (!(in >> v)) return "limiter: 0 или 1"; limiter_ = v != 0; }
+            else if (what == "delay") {
+                int k; float ms;
+                if (!(in >> k >> ms) || k < 0 || k > 2 || !std::isfinite(ms)) return "delay: номер выхода 0..2 и миллисекунды";
+                ms = std::max(0.0f, std::min(500.0f, ms));
+                buses[k].delay.frames = static_cast<uint32_t>(ms * kRate / 1000.0f + 0.5f);
+            }
+            else if (what == "buffer") {
+                int v; if (!(in >> v)) return "buffer: число кадров 128..1024";
+                v = std::max(128, std::min(1024, v));
+                std::string err;
+                {
+                    std::lock_guard<std::mutex> lk(dev_mu_);
+                    if (buf_frames_.exchange(v) != v && master_ >= 0) err = rebuild();   // новый размер действует с открытия устройства
+                }
+                dirty = true;
+                return err;
+            }
+            else if (what == "reconnect") { int v; if (!(in >> v)) return "reconnect: 0, 1 или 2"; reconnect_ = std::max(0, std::min(2, v)); }
+            else return "звук: неизвестное свойство " + what;
         } else if (b == "dev") {
             std::string slot; in >> slot;
             int s = slot_index(slot);
@@ -503,6 +555,10 @@ private:
     std::atomic<int64_t> mst_last_ns_{0};          // когда был прошлый вызов (только аудио-поток; сторож обнуляет при пересборке)
     std::atomic<uint32_t> mst_calls_{0}, mst_late_{0}, mst_gap_us_{0}, mst_proc_us_{0}, mst_rebuilds_{0};
     std::atomic<bool> drv_alive_{false};
+    std::atomic<bool> limiter_{true};              // лимитер выходов (этап 5)
+    std::atomic<int> buf_frames_{480};             // размер блока ведущего устройства, кадры (по умолчанию 480 = 10 мс)
+    std::atomic<int> reconnect_{2};                // автопереподключение: 0 выкл, 1 только A1, 2 все устройства
+    struct DevInfo { uint32_t rate = 0, ch = 0, bits = 0; } info_[kSlots];   // как Windows открыла устройство (под dev_mu_)
     std::atomic<unsigned> drv_mask_{0};            // бит 0: драйвер жив; 1..6: входы V1..V6; 7..8: выходы B1, B2
 
     std::string load_file(Strip& s, const std::string& path) {
@@ -535,6 +591,7 @@ private:
 
     void close_slot(int s) {
         ok_[s] = false;
+        info_[s] = DevInfo{};
         if (dev_[s]) { ma_device_uninit(dev_[s].get()); dev_[s].reset(); }
     }
 
@@ -552,7 +609,7 @@ private:
             cfg.sampleRate = 48000;
             // Ведущее устройство (0.5.4): 10 мс × 3 вместо 2,7 мс × 2. Буфер в 5 мс опустошается от любой задержки потока дольше 5 мс
             // (например, когда Windows запускает системный звук и грузит процессор): колонки хрипят, устройство перезапускается.
-            cfg.periodSizeInFrames = is_master ? 480 : 256;
+            cfg.periodSizeInFrames = is_master ? static_cast<ma_uint32>(buf_frames_.load()) : 256;
             cfg.periods = is_master ? 3 : 2;
             cfg.performanceProfile = ma_performance_profile_conservative;
             cfg.noPreSilencedOutputBuffer = MA_TRUE;
@@ -569,6 +626,12 @@ private:
             if (is_master) {
                 latency_ms_ = d->playback.internalPeriodSizeInFrames * d->playback.internalPeriods * 1000.0 /
                               (d->playback.internalSampleRate ? d->playback.internalSampleRate : 48000);
+            }
+            {   // как устройство открыто на самом деле (для строки состояния на экране «Устройства»)
+                const bool cap = type == ma_device_type_capture;
+                info_[s].rate = cap ? d->capture.internalSampleRate : d->playback.internalSampleRate;
+                info_[s].ch = cap ? d->capture.internalChannels : d->playback.internalChannels;
+                info_[s].bits = ma_get_bytes_per_sample(cap ? d->capture.internalFormat : d->playback.internalFormat) * 8;
             }
             dev_[s] = std::move(d);
             ok_[s] = true;
@@ -718,6 +781,7 @@ private:
                 // Выход дорожки для OBS («Bogestv0 <Дорожка> Out»): чистый звук дорожки V1..V6 до фейдера, Mute и Solo.
                 if (shm_ && i >= 2 && i - 2 < kShmTapRings && shm_out_[kShmBusRings + (i - 2)].active())
                     shm_out_[kShmBusRings + (i - 2)].push(t, static_cast<uint32_t>(n));
+                s.eq.process(t, n);   // бас и ВЧ дорожки (после выхода для OBS: туда идёт чистый звук)
                 const bool silent = s.mute.load(std::memory_order_relaxed) || (any_solo && !s.solo.load(std::memory_order_relaxed));
                 const float target = silent ? 0.0f : gain_from_db(s.gain_db.load(std::memory_order_relaxed));
                 ramp(t, n, s.cur_gain, target);
@@ -734,9 +798,12 @@ private:
                 Bus& b = buses[k];
                 float* a = acc_[k].data();
                 const float target = b.mute.load(std::memory_order_relaxed) ? 0.0f : gain_from_db(b.gain_db.load(std::memory_order_relaxed));
+                b.eq.process(a, n);   // бас и ВЧ шины: до фейдера
                 ramp(a, n, b.cur_gain, target);
                 b.cur_gain = target;
-                for (size_t j = 0; j < n * 2; ++j) a[j] = soft_limit(a[j]);  // лимитер выходов
+                if (k < 3) b.delay.process(a, n);   // задержка A1..A3 (выравнивание колонок и наушников)
+                if (limiter_.load(std::memory_order_relaxed)) for (size_t j = 0; j < n * 2; ++j) a[j] = soft_limit(a[j]);  // лимитер выходов
+                else for (size_t j = 0; j < n * 2; ++j) a[j] = std::max(-1.0f, std::min(1.0f, a[j]));      // без лимитера: жёсткая обрезка, чтобы не выйти за ±1
                 b.meter.feed(a, n, 2);
                 if (k == master_bus) std::memcpy(out + done * 2, a, n * 2 * sizeof(float));
                 else if (ok_[2 + k]) b.ring.push(a, n);

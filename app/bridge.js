@@ -29,6 +29,13 @@
     { g: 10, gate: -45, hpf: 80, comp: 3, ns: 2, amt: 70 },
     { g: 10, gate: -45, hpf: 80, comp: 3, ns: 1, amt: 50 }
   ];
+  // Аудио-параметры движка (этап 5): lim — лимитер выходов; dly — задержка A1..A3, мс; buf — блок ведущего устройства, кадры; rc — переподключение.
+  const AUDIO_DEFAULTS = { lim: 1, dly: [0, 0, 0], buf: 480, rc: 2 };
+  // Настройки программы (экран «Настройки»). Часть из них применяет окно, часть оболочка Tauri (app_prefs в main.rs).
+  const APP_DEFAULTS = {
+    reconnect: true, scope: 'all', loadOnStart: true, autosave: true,
+    tray: true, hideOnClose: true, showOnStart: true, onTop: false, lockGui: false, autostart: false
+  };
   const MIC_CMD = { g: 'gain', gate: 'gate', hpf: 'hpf', comp: 'comp', ns: 'ns', amt: 'nsamt' };
 
   const B = (window.Bridge = {
@@ -39,7 +46,7 @@
     meters: null,
     lastError: '',
     settings: null,
-    SLOTS, STRIP_DEFAULTS, MIC_DEFAULTS, NS_AMT,
+    SLOTS, STRIP_DEFAULTS, MIC_DEFAULTS, NS_AMT, AUDIO_DEFAULTS, APP_DEFAULTS,
     on(fn) { listeners.add(fn); return () => listeners.delete(fn); }
   });
 
@@ -53,7 +60,9 @@
       active: 'play',
       mics: MIC_DEFAULTS.map((m) => ({ ...m })),
       devices: null,
-      mixer: null
+      mixer: null,
+      audio: { ...AUDIO_DEFAULTS, dly: AUDIO_DEFAULTS.dly.slice() },
+      app: { ...APP_DEFAULTS }
     };
   }
   B.defaults = defaults;
@@ -101,6 +110,11 @@
           B.settings.mics = MIC_DEFAULTS.map((m, i) => ({ ...m, ...(saved.mics[i] || {}) }));
         }
         delete B.settings.ns;
+        const d = defaults();
+        B.settings.audio = { ...d.audio, ...(saved.audio || {}) };
+        if (!Array.isArray(B.settings.audio.dly) || B.settings.audio.dly.length !== 3) B.settings.audio.dly = [0, 0, 0];
+        B.settings.app = { ...d.app, ...(saved.app || {}) };
+        B.settings.strips = d.strips.map((x, i) => ({ ...x, ...((saved.strips || [])[i] || {}) }));
       } catch (e) { B.settings = defaults(); }
     }
   }
@@ -110,19 +124,25 @@
     const st = B.state;
     if (!st || !B.applied) return;
     B.settings.mixer = {
-      strips: st.strips.map((s) => ({ g: s.g, m: s.m, r: s.r })),
-      buses: st.buses.map((b) => ({ g: b.g, m: b.m }))
+      strips: st.strips.map((s, i) => ({ g: s.g, m: s.m, r: s.r, bs: st.eq ? st.eq.s[i][0] : 0, tr: st.eq ? st.eq.s[i][1] : 0 })),
+      buses: st.buses.map((b, k) => ({ g: b.g, m: b.m, bs: st.eq ? st.eq.b[k][0] : 0, tr: st.eq ? st.eq.b[k][1] : 0 }))
     };
+    if (st.aud) B.settings.audio = { lim: st.aud.lim, dly: st.aud.dly.slice(), buf: st.aud.buf, rc: st.aud.rc };
     B.settings.devices = st.dev;
     if (st.mic) B.settings.mics = st.mic.map((m) => ({ g: m.g, gate: m.gate, hpf: m.hpf, comp: m.comp, ns: m.ns, amt: m.amt }));
   }
+  // «Сохранять изменения сразу» выключено: пишем в файл только по кнопке «Сохранить настройки».
   function scheduleSave() {
     if (!B.applied) return;
+    if (B.settings.app && B.settings.app.autosave === false) { B.unsaved = true; emit('unsaved'); return; }
     clearTimeout(saveTimer);
     saveTimer = setTimeout(B.saveSettings, 600);
   }
+  B.scheduleSave = scheduleSave;
   B.saveSettings = async function () {
     snapshotFromEngine();
+    B.unsaved = false;
+    emit('unsaved');
     const json = JSON.stringify(B.settings, null, 2);
     try {
       if (B.mode === 'tauri') await T.core.invoke('settings_save', { json });
@@ -189,6 +209,46 @@
   B.setBusGain = (k, db) => B.send(`set bus ${k} gain ${db}`);
   B.setBusMute = (k, on) => B.send(`set bus ${k} mute ${on ? 1 : 0}`);
   B.setDevice = (slot, name) => B.send(`set dev ${slot} ${name || '-'}`);
+  // Бас и ВЧ, −12…+12 дБ. kind: 'strip' (дорожка 0..7) или 'bus' (шина 0..4); key: 'bass' | 'treble'. Окно сразу показывает новое значение.
+  B.setEq = function (kind, i, key, v) {
+    v = Math.max(-12, Math.min(12, Math.round(v * 2) / 2));
+    const st = B.state;
+    if (st && st.eq) st.eq[kind === 'bus' ? 'b' : 's'][i][key === 'bass' ? 0 : 1] = v;
+    return B.send(`set ${kind} ${i} ${key} ${v}`);
+  };
+  B.eqOf = function (kind, i) {
+    const st = B.state;
+    const a = st && st.eq && st.eq[kind === 'bus' ? 'b' : 's'][i];
+    if (a) return { bass: a[0], treble: a[1] };
+    const m = B.settings.mixer && B.settings.mixer[kind === 'bus' ? 'buses' : 'strips'][i];
+    return { bass: (m && m.bs) || 0, treble: (m && m.tr) || 0 };
+  };
+  // Аудио-параметры движка: limiter 0/1, delay K мс, buffer кадров, reconnect 0/1/2.
+  B.setAudio = function (key, a, b) {
+    const st = B.state, au = B.settings.audio;
+    if (key === 'limiter') { au.lim = a ? 1 : 0; if (st && st.aud) st.aud.lim = au.lim; return B.send(`set audio limiter ${au.lim}`); }
+    if (key === 'delay') { au.dly[a] = b; if (st && st.aud) st.aud.dly[a] = b; return B.send(`set audio delay ${a} ${b}`); }
+    if (key === 'buffer') { au.buf = a; if (st && st.aud) st.aud.buf = a; return B.send(`set audio buffer ${a}`); }
+    if (key === 'reconnect') { au.rc = a; if (st && st.aud) st.aud.rc = a; return B.send(`set audio reconnect ${a}`); }
+  };
+  B.audioOf = () => (B.state && B.state.aud) || B.settings.audio;
+  // Настройки программы: пишем в файл настроек и сообщаем оболочке Tauri (трей, закрытие окна, поверх окон).
+  B.setApp = function (patch) {
+    Object.assign(B.settings.app, patch);
+    if ('reconnect' in patch || 'scope' in patch) {
+      const a = B.settings.app;
+      B.setAudio('reconnect', a.reconnect ? (a.scope === 'a1' ? 1 : 2) : 0);
+    }
+    pushAppPrefs();
+    emit('app');
+    B.saveSettings();   // это не поток движка, а выбор человека: пишем сразу, даже если автосохранение выключено
+  };
+  function pushAppPrefs() {
+    if (B.mode !== 'tauri') return;
+    const a = B.settings.app;
+    T.core.invoke('app_prefs', { tray: !!a.tray, hideOnClose: !!a.hideOnClose, onTop: !!a.onTop }).catch(() => {});
+  }
+  B.pushAppPrefs = pushAppPrefs;
   // Микрофон: key = g | gate | hpf | comp | ns | amt. Окно сразу показывает новое значение, не дожидаясь ответа движка.
   B.setMic = function (i, key, v) {
     if (B.state && B.state.mic && B.state.mic[i]) B.state.mic[i][key] = v;
@@ -218,18 +278,98 @@
     scheduleSave();
   };
 
+  // Аудио-параметры и режим переподключения.
+  function sendAudio() {
+    const au = B.settings.audio, a = B.settings.app;
+    B.send(`set audio limiter ${au.lim ? 1 : 0}`);
+    au.dly.forEach((ms, k) => B.send(`set audio delay ${k} ${ms}`));
+    B.send(`set audio buffer ${au.buf}`);
+    B.send(`set audio reconnect ${a.reconnect === false ? 0 : (a.scope === 'a1' ? 1 : 2)}`);
+  }
+  // Заводские значения микшера (устройства не трогаем).
+  function defaultsToEngine() {
+    GAIN_DEFAULTS.forEach((g, i) => {
+      B.send(`set strip ${i} gain ${g}`); B.send(`set strip ${i} mute 0`); B.send(`set strip ${i} solo 0`);
+      B.send(`set strip ${i} bass 0`); B.send(`set strip ${i} treble 0`);
+    });
+    for (let k = 0; k < 5; k++) { B.send(`set bus ${k} gain 0`); B.send(`set bus ${k} mute 0`); B.send(`set bus ${k} bass 0`); B.send(`set bus ${k} treble 0`); }
+    const sc = SCENES_DEFAULT[0];
+    sc.routes.forEach((mask, i) => { for (let k = 0; k < 5; k++) B.send(`set strip ${i} route ${k} ${(mask >> k) & 1}`); });
+    MIC_DEFAULTS.forEach((m, i) => B.sendMic(i, m));
+  }
+  // «Сбросить все настройки»: заводское состояние. Устройства остаются назначенными, иначе пропадёт звук.
+  B.resetAll = async function () {
+    const keepDevices = B.settings.devices;
+    B.settings = defaults();
+    B.settings.devices = keepDevices;
+    defaultsToEngine();
+    B.settings.audio = { ...AUDIO_DEFAULTS, dly: AUDIO_DEFAULTS.dly.slice() };
+    sendAudio();
+    B.settings.mixer = null;
+    pushAppPrefs();
+    B.send('get');
+    emit('state'); emit('app');
+    await B.saveSettings();
+  };
+  // «Файл настроек»: выгрузка и загрузка JSON.
+  B.exportSettings = function () {
+    snapshotFromEngine();
+    const blob = new Blob([JSON.stringify(B.settings, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'bogestv0-settings.json';
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  };
+  B.importSettings = async function (text) {
+    let saved;
+    try { saved = JSON.parse(text); } catch (e) { throw new Error('Это не файл настроек: не читается как JSON.'); }
+    if (!saved || typeof saved !== 'object' || !Array.isArray(saved.strips) || !saved.mixer) throw new Error('В файле нет настроек микшера.');
+    const keepDevices = B.settings.devices;
+    B.settings = Object.assign(defaults(), saved);
+    B.settings.mics = MIC_DEFAULTS.map((m, i) => ({ ...m, ...((saved.mics || [])[i] || {}) }));
+    B.settings.audio = { ...AUDIO_DEFAULTS, ...(saved.audio || {}) };
+    B.settings.app = { ...APP_DEFAULTS, ...(saved.app || {}) };
+    B.settings.strips = defaults().strips.map((x, i) => ({ ...x, ...((saved.strips || [])[i] || {}) }));
+    B.settings.devices = saved.devices || keepDevices;
+    applySaved();
+    pushAppPrefs();
+    B.send('get');
+    emit('state'); emit('app');
+    await B.saveSettings();
+  };
+
+  // «Заблокировать интерфейс»: фейдеры, кнопки и крутилки не реагируют, пока блокировка включена. Перехват в фазе погружения, раньше экранов.
+  const LOCK_SEL = '[data-act],[data-fader],[data-knob],[data-bfader],[data-bmute]';
+  function lockGuard(ev) {
+    if (!B.settings.app || !B.settings.app.lockGui) return;
+    const t = ev.target && ev.target.closest && ev.target.closest(LOCK_SEL);
+    if (!t || t.dataset.act === 'restart') return;
+    ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
+    if (ev.type === 'pointerdown') B.notice('Интерфейс заблокирован. Снять блокировку: Настройки → «Заблокировать интерфейс».');
+  }
+  ['pointerdown', 'click', 'keydown'].forEach((t) => document.addEventListener(t, lockGuard, true));
+
   // При каждом новом запуске движка возвращаем сохранённые устройства и настройки микшера.
   function applySaved() {
     const s = B.settings;
     if (s.devices) SLOTS.forEach((slot) => { if (s.devices[slot]) B.send(`set dev ${slot} ${s.devices[slot]}`); });
     s.mics.forEach((m, i) => B.sendMic(i, m));
     const mx = s.mixer;
-    if (mx) {
+    sendAudio();
+    if (mx && s.app.loadOnStart === false) {
+      // «Загружать настройки при запуске» выключено: устройства вернули, остальное по умолчанию.
+      defaultsToEngine();
+    } else if (mx) {
       mx.strips.forEach((st, i) => {
         B.send(`set strip ${i} gain ${st.g}`); B.send(`set strip ${i} mute ${st.m}`);
         for (let k = 0; k < 5; k++) B.send(`set strip ${i} route ${k} ${(st.r >> k) & 1}`);
+        B.send(`set strip ${i} bass ${st.bs || 0}`); B.send(`set strip ${i} treble ${st.tr || 0}`);
       });
-      mx.buses.forEach((b, k) => { B.send(`set bus ${k} gain ${b.g}`); B.send(`set bus ${k} mute ${b.m}`); });
+      mx.buses.forEach((b, k) => {
+        B.send(`set bus ${k} gain ${b.g}`); B.send(`set bus ${k} mute ${b.m}`);
+        B.send(`set bus ${k} bass ${b.bs || 0}`); B.send(`set bus ${k} treble ${b.tr || 0}`);
+      });
     } else {
       GAIN_DEFAULTS.forEach((g, i) => B.send(`set strip ${i} gain ${g}`));
       const sc = s.scenes.find((x) => x.id === s.active);
@@ -265,11 +405,13 @@
     if (String(boot) !== applied) {
       try { localStorage.setItem('bogestv0.boot', String(boot)); } catch (e) { /* ok */ }
       applySaved();
+      pushAppPrefs();
       // Пока движок применяет сохранённое (открытие устройств занимает время), ничего не пишем в файл,
       // иначе промежуточное состояние затрёт сохранённые настройки.
       setTimeout(() => { B.applied = true; emit('ready'); }, 3000);
     } else {
       B.applied = true;
+      pushAppPrefs();
       emit('ready');
     }
   }

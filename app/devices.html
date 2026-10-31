@@ -181,6 +181,7 @@ html,body{height:100%;overflow:hidden}
                 <div style="flex:1;min-width:0;display:flex;flex-direction:column">
                   <span style="font-size:12px;color:var(--muted)">{{s.role}}</span>
                   <span style="font-weight:600;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:{{s.nameColor}}">{{s.device}}</span>
+                  <span style="font:400 11.5px var(--f-mono);color:{{s.infoColor}}">{{s.info}}</span>
                 </div>
                 <sc-if value="{{s.connected}}">
                   <button onClick="{{s.disconnect}}" aria-label="Отключить {{s.tag}}" style="min-height:36px;padding:0 14px;border-radius:10px;background:none;color:var(--fg);border:1px solid var(--line);font:500 13px var(--f-body)">Отключить</button>
@@ -329,6 +330,14 @@ class Component extends DCLogic {
         tag: label[s.key], role: s.role,
         device: name ? (gone ? 'Отключено, жду: ' + name : bad ? 'Не открылось (занято?): ' + name : name) : 'Ничего не подключено',
         nameColor: gone ? 'var(--warn)' : bad ? 'var(--bad)' : (name ? 'var(--fg)' : 'var(--muted)'),
+        // Строка состояния как в Voicemeeter: «Работает · 48 кГц · 2 канала · 24 бита» (так Windows открыла устройство).
+        info: (() => {
+          const i = st && st.info && st.info[s.key];
+          if (i) return 'Работает · ' + (i[0] / 1000).toString().replace('.', ',') + ' кГц · ' + i[1] + ' ' + (i[1] === 1 ? 'канал' : i[1] < 5 ? 'канала' : 'каналов') + ' · ' + i[2] + ' ' + ([2, 3, 4].includes(i[2] % 10) && ![12, 13, 14].includes(i[2] % 100) ? 'бита' : 'бит');
+          if (!name) return 'Не подключено';
+          return gone ? 'Ждёт устройство' : bad ? 'Не открылось' : 'Подключается…';
+        })(),
+        infoColor: (st && st.info && st.info[s.key]) ? 'var(--ok)' : 'var(--muted)',
         connected: !!name, empty: !name,
         border: gone ? 'var(--warn)' : bad ? 'var(--bad)' : (name ? 'var(--signal)' : 'transparent'),
         tagStyle: 'background:var(--' + s.tone + '-soft);color:var(--' + s.tone + ')',

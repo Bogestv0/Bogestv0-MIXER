@@ -161,7 +161,7 @@
     if (B.mode === 'none') { tone = 'warn'; text = 'Движок не подключён'; sub = 'откройте программу<br>через установщик'; }
     else if (!B.connected || !st) { tone = 'warn'; text = 'Движок запускается…'; sub = 'подождите секунду'; }
     else if (!st.running) { tone = 'warn'; text = 'Нет выхода A'; sub = 'назначьте устройство<br>на экране «Устройства»'; }
-    else sub = Math.round(st.rate / 1000) + ' кГц · блок 128 смп<br>буфер ~' + Number(st.ms).toFixed(1) + ' мс';
+    else sub = Math.round(st.rate / 1000) + ' кГц · блок ' + (st.aud ? st.aud.buf : 480) + ' смп<br>буфер ~' + Number(st.ms).toFixed(1) + ' мс';
     badge.style.background = 'var(--' + tone + '-soft)';
     badge.style.color = 'var(--' + tone + ')';
     dot.style.background = 'var(--' + tone + ')';

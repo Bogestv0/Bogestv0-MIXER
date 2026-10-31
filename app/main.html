@@ -70,12 +70,12 @@ html,body{height:100%;overflow:hidden}
               
             </div>
 
-            <div style="height:150px;box-sizing:border-box;padding:10px;border-radius:12px;background:var(--surface-2);display:flex;flex-direction:column;gap:7px">
+            <div style="min-height:176px;flex-shrink:0;box-sizing:border-box;padding:10px;border-radius:12px;background:var(--surface-2);display:flex;flex-direction:column;gap:7px">
               <sc-if value="{{s.isMic}}">
                 <div style="display:flex;flex-direction:column;gap:6px">
-                  <div style="display:flex;justify-content:space-between;align-items:baseline">
+                  <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;column-gap:6px">
                     <h2 style="margin:0;font:600 11px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Шум</h2>
-                    <a href="mic.html#{{s.i}}" title="Настройки микрофона: шумодав, гейт, компрессор, усиление" style="font:500 12px 'JetBrains Mono',monospace;color:var(--signal)">{{s.nsName}} ›</a>
+                    <a href="mic.html#{{s.i}}" title="Настройки микрофона: шумодав, гейт, компрессор, усиление" style="font:500 11.5px 'JetBrains Mono',monospace;color:var(--signal);white-space:nowrap">{{s.nsName}} ›</a>
                   </div>
                   <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px">
                     <button data-act="ns" data-i="{{s.i}}" data-v="0" aria-pressed="{{s.n0On}}" style="flex:1;height:28px;border-radius:8px;padding:0;font:500 11px 'JetBrains Mono',monospace;{{s.n0}}">Выкл</button>
@@ -156,17 +156,18 @@ class Component extends DCLogic {
     const nsNames = ['Выкл', 'Мягкое', 'Сильное', 'Максимум'];
     const srcNames = ['', 'Тест: синус', 'Тест: шум', 'Тест: файл'];
     const scene = S.scenes.find((x) => x.id === S.active);
-    const strips = S.strips.map((d, i) => {
+    const firstVirtual = S.strips.findIndex((d, i) => i >= 2 && !d.hidden);   // перед ним отступ между микрофонами и виртуальными
+    const strips = S.strips.map((d, i) => d.hidden ? null : ({ d, i })).filter(Boolean).map(({ d, i }) => {
       const e = st ? st.strips[i] : { g: [-3, -5, -6, -14, -4, -9, -8, -12][i], m: 0, s: 0, r: scene ? scene.routes[i] : 0, src: 0 };
       const isMic = i < 2;
       const mic = isMic ? B.micOf(i) : null;
       const ns = isMic ? (mic.ns || 0) : 0;
       const o = {
-        i, name: d.name, tag: d.tag, ml: i === 2 ? 14 : 0,
+        i, name: d.name, tag: d.tag, ml: i === firstVirtual ? 14 : 0,
         source: e.src ? srcNames[e.src] : d.source, isMic, notMic: !isMic,
         nsName: nsNames[ns],
-        k1Label: isMic ? 'Гейт' : 'Бас', k1Deg: 135, k1Rot: 0, k1Key: isMic ? 'gate' : 'bass', k1Title: isMic ? '' : 'Появится в одном из следующих обновлений', k1Cursor: isMic ? 'ns-resize' : 'default',
-        k2Label: isMic ? 'Компр.' : 'ВЧ', k2Deg: 135, k2Rot: 0, k2Key: isMic ? 'comp' : 'treble', k2Title: isMic ? '' : 'Появится в одном из следующих обновлений', k2Cursor: isMic ? 'ns-resize' : 'default',
+        k1Label: isMic ? 'Гейт' : 'Бас', k1Deg: 135, k1Rot: 0, k1Key: isMic ? 'gate' : 'bass', k1Title: '', k1Cursor: 'ns-resize',
+        k2Label: isMic ? 'Компр.' : 'ВЧ', k2Deg: 135, k2Rot: 0, k2Key: isMic ? 'comp' : 'treble', k2Title: '', k2Cursor: 'ns-resize',
         dbText: fmt(e.g), pos: pos(e.g), capOpacity: 1,
         meterL: M ? lvl(M.s[i][0]) : 100, meterR: M ? lvl(M.s[i][1]) : 100,
         muted: !!e.m, soloOn: !!e.s,
@@ -181,6 +182,14 @@ class Component extends DCLogic {
         o.k1Title = 'Гейт: ' + (mic.gate <= -79 ? 'выкл' : '−' + Math.abs(mic.gate) + ' дБ') + '. Тяните вверх и вниз, двойной щелчок сбрасывает';
         o.k2Title = 'Компрессор: ' + (mic.comp <= 1.04 ? 'выкл' : mic.comp + ' : 1') + '. Тяните вверх и вниз, двойной щелчок сбрасывает';
       }
+      if (!isMic) {
+        const q = B.eqOf('strip', i), f = (v) => (v + 12) / 24;
+        const sg = (v) => (v === 0 ? '0 дБ' : (v > 0 ? '+' : '−') + Math.abs(v) + ' дБ');
+        o.k1Deg = Math.round(f(q.bass) * 270); o.k1Rot = o.k1Deg - 135;
+        o.k2Deg = Math.round(f(q.treble) * 270); o.k2Rot = o.k2Deg - 135;
+        o.k1Title = 'Бас: ' + sg(q.bass) + '. Тяните вверх и вниз, двойной щелчок сбрасывает на 0 дБ';
+        o.k2Title = 'ВЧ: ' + sg(q.treble) + '. Тяните вверх и вниз, двойной щелчок сбрасывает на 0 дБ';
+      }
       [0, 1, 2, 3].forEach((k) => { o['n' + k] = nsChip(ns === k); o['n' + k + 'On'] = ns === k; });
       ['a1', 'a2', 'a3', 'b1', 'b2'].forEach((key, k) => { const on = !!((e.r >> k) & 1); o[key] = chip(on, k < 3 ? 'signal' : 'warn'); o[key + 'On'] = on; });
       return o;
@@ -189,7 +198,7 @@ class Component extends DCLogic {
       ['Микшер', 'M6 4v16M12 4v16M18 4v16', 'main.html', 1], ['Выходы', 'M4 9v6h4l5 4V5L8 9H4zM16.5 8.5a5 5 0 0 1 0 7', 'outputs.html', 0],
       ['Сцены', 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z', 'scenes.html', 0], ['Эффекты', 'M3 12h3l2-6 4 12 3-9 2 3h4', 'effects.html', 0],
       ['Запись', 'M12 4a8 8 0 1 0 0 16a8 8 0 1 0 0-16z', 'record.html', 0], ['Устройства', 'M7 3h10a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3zM12 11a3 3 0 1 0 0 6a3 3 0 1 0 0-6z', 'devices.html', 0],
-      ['Настройки', 'M12 2v3M12 19v3M2 12h3M19 12h3M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6z', 'strips.html', 0]
+      ['Настройки', 'M12 2v3M12 19v3M2 12h3M19 12h3M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6z', 'settings.html', 0]
     ];
     const nav = navDefs.map((n) => ({ name: n[0], d: n[1], href: n[2], style: n[3] ? 'background:var(--signal-soft);color:var(--signal);font-weight:600' : 'background:none;color:var(--muted)' }));
     const scenes = S.scenes.map((sc) => ({
