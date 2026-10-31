@@ -140,6 +140,20 @@ inline std::string json_escape(const std::string& s) {
     return o;
 }
 
+// Идентификатор конечной точки WASAPI (IMMDevice::GetId, вида «{0.0.1.00000000}.{GUID}») в виде ASCII-строки.
+// Именно его OBS хранит в настройке device_id источника «Захват входного аудио»: по нему микшер сам подключает наши Out к OBS.
+// Не-ASCII символов в таком идентификаторе не бывает; при другом бэкенде (проверка на не-Windows) поле пустое.
+inline std::string wasapi_id(const ma_device_id& id) {
+    std::string o;
+    for (size_t i = 0; i < sizeof(id.wasapi) / sizeof(id.wasapi[0]); ++i) {
+        const unsigned c = static_cast<unsigned>(id.wasapi[i]);
+        if (c == 0) break;
+        if (c < 0x20 || c > 0x7e) return "";
+        o += static_cast<char>(c);
+    }
+    return o;
+}
+
 inline float gain_from_db(float db) { return db <= -47.9f ? 0.0f : db_to_lin(db); }
 
 class Mixer {
@@ -183,7 +197,8 @@ public:
         std::ostringstream o;
         o << "{\"t\":\"devices\",\"cap\":[";
         for (size_t i = 0; i < cap_.size(); ++i)
-            o << (i ? "," : "") << "{\"name\":\"" << json_escape(cap_[i].name) << "\",\"def\":" << (cap_[i].isDefault ? 1 : 0) << "}";
+            o << (i ? "," : "") << "{\"name\":\"" << json_escape(cap_[i].name) << "\",\"id\":\"" << json_escape(wasapi_id(cap_[i].id))
+              << "\",\"def\":" << (cap_[i].isDefault ? 1 : 0) << "}";
         o << "],\"play\":[";
         for (size_t i = 0; i < play_.size(); ++i)
             o << (i ? "," : "") << "{\"name\":\"" << json_escape(play_[i].name) << "\",\"def\":" << (play_[i].isDefault ? 1 : 0) << "}";

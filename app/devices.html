@@ -15,6 +15,7 @@ html,body{height:100%;overflow:hidden}
 </style>
 <script src="dc.js"></script>
 <script src="bridge.js"></script>
+<script src="obs.js"></script>
 </head>
 <body>
 <template id="tpl">
@@ -129,8 +130,47 @@ html,body{height:100%;overflow:hidden}
         <div style="font-size:13px;color:var(--muted)">Одно устройство занимает один слот. Нажми на подсвеченный слот ещё раз, чтобы отключить.</div>
       </div>
 
-      <!-- SLOTS + VIRTUAL -->
+      <!-- OBS + SLOTS + VIRTUAL -->
       <div style="flex:1;min-width:0;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:14px">
+
+        <div style="flex:0 0 auto;background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+            <h2 style="margin:0;font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Звук в OBS</h2>
+            <span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 10px;border-radius:99px;{{obs.pill}}">{{obs.pillText}}</span>
+          </div>
+          <div style="font-size:13px;color:var(--muted)">{{obs.intro}}</div>
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
+            <sc-for list="{{obs.rows}}" as="r">
+              <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;background:var(--surface-2)">
+                <span style="flex:0 0 34px;text-align:center;font:600 12px var(--f-mono);padding:3px 0;border-radius:99px;{{r.tagStyle}}">{{r.tag}}</span>
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+                  <span style="font-weight:600;font-size:13.5px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{r.name}}</span>
+                  <span style="font-size:11.5px;color:{{r.hintColor}};white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="{{r.title}}">{{r.hint}}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <button onClick="{{obs.toggleMute}}" aria-pressed="{{obs.mutePressed}}" style="display:flex;align-items:center;gap:10px;text-align:left;min-height:40px;padding:6px 12px;border-radius:12px;font:500 13px/1.35 var(--f-body);{{obs.muteStyle}}">
+            <span style="flex:0 0 18px;height:18px;border-radius:5px;border:1.5px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:13px;line-height:1">{{obs.muteMark}}</span>
+            Заглушить «Звук рабочего стола» в OBS (иначе звук In и Out задвоится)
+          </button>
+          <div style="display:flex;flex-wrap:wrap;gap:8px">
+            <sc-if value="{{obs.canWs}}">
+              <button onClick="{{obs.add}}" style="min-height:40px;padding:0 16px;border-radius:12px;background:var(--signal);color:var(--signal-ink);border:1px solid var(--signal);font:600 14px var(--f-body)">Добавить в открытый OBS</button>
+            </sc-if>
+            <sc-if value="{{obs.noWs}}">
+              <span style="display:inline-flex;align-items:center;min-height:40px;padding:0 16px;border-radius:12px;background:var(--bg);color:var(--muted);border:1px solid var(--line);font:600 14px var(--f-body);opacity:.7">Добавить в открытый OBS</span>
+            </sc-if>
+            <sc-if value="{{obs.canFile}}">
+              <button onClick="{{obs.file}}" style="min-height:40px;padding:0 16px;border-radius:12px;background:none;color:var(--fg);border:1px solid var(--line);font:500 14px var(--f-body)">Создать коллекцию сцен для OBS</button>
+            </sc-if>
+            <sc-if value="{{obs.noFile}}">
+              <span style="display:inline-flex;align-items:center;min-height:40px;padding:0 16px;border-radius:12px;background:var(--bg);color:var(--muted);border:1px solid var(--line);font:500 14px var(--f-body);opacity:.7">Создать коллекцию сцен для OBS</span>
+            </sc-if>
+            <button onClick="{{obs.recheck}}" style="min-height:40px;padding:0 14px;border-radius:12px;background:none;color:var(--muted);border:1px solid var(--line);font:500 13px var(--f-body)">Проверить OBS снова</button>
+          </div>
+          <div style="font-size:12.5px;color:{{obs.msgColor}};white-space:pre-line;line-height:1.5">{{obs.msg}}</div>
+        </div>
 
         <div style="flex:0 0 auto;background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px">
           <h2 style="margin:0;font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Слоты микшера</h2>
@@ -178,6 +218,55 @@ html,body{height:100%;overflow:hidden}
 </div>
 </template>
 <div id="app"></div>
+<script>
+// Звук в OBS (app/obs.js): состояние карточки живёт здесь, потому что экран перерисовывается при каждом событии движка.
+const OBSUI = { probe: null, busy: false, msg: '', bad: false, muteDesktop: false };
+const obsT = () => (window.__TAURI__ && window.__TAURI__.core ? window.__TAURI__ : null);
+const obsRender = () => { if (window.__dc) window.__dc.setState({}); };
+async function obsProbe() {
+  const T = obsT();
+  if (!T) return null;
+  try { OBSUI.probe = JSON.parse(await T.core.invoke('obs_probe')); } catch (e) { OBSUI.probe = null; }
+  obsRender();
+  return OBSUI.probe;
+}
+function obsRows() {
+  const B = window.Bridge;
+  return ObsLink.plan(B.devices.cap || [], ((B.settings && B.settings.strips) || []).map((x) => x.name));
+}
+async function obsRun(job) {
+  if (OBSUI.busy) return;
+  OBSUI.busy = true; OBSUI.bad = false; OBSUI.msg = 'Работаю…';
+  obsRender();
+  try { OBSUI.msg = await job(); } catch (e) { OBSUI.bad = true; OBSUI.msg = 'Не получилось: ' + (e && e.message ? e.message : e); }
+  OBSUI.busy = false;
+  obsRender();
+}
+const obsAdd = () => obsRun(async () => {
+  const rows = obsRows();
+  const p = await obsProbe();
+  if (!p || !p.found) throw new Error('папка OBS не найдена. Запустите OBS один раз.');
+  if (!p.ws || !p.ws.enabled) throw new Error('в OBS выключен сервер WebSocket. Включите: «Сервис → Настройки сервера WebSocket → Включить сервер WebSocket» и нажмите OK.');
+  const client = await ObsLink.connect({ port: p.ws.port, password: p.ws.auth ? p.ws.password : '' });
+  let r;
+  try { r = await ObsLink.sync(client, rows, { muteDesktop: OBSUI.muteDesktop }); } finally { client.close(); }
+  const skipped = rows.filter((x) => !x.ok).map((x) => x.tag);
+  let t = 'Готово. Создано источников: ' + r.created.length + (r.reused.length ? ', уже были: ' + r.reused.length : '') + '. Они лежат в сцене «' + ObsLink.SCENE + '»';
+  t += r.scenesAdded.length ? ', и эта сцена добавлена в: ' + r.scenesAdded.join(', ') + '.' : '; во всех ваших сценах она уже есть.';
+  t += '\nДорожки появятся в микшере OBS (у сцены в эфире).';
+  if (r.muted.length) t += '\nЗаглушено: ' + r.muted.join(', ') + '.';
+  else t += '\nВ OBS «Настройки → Аудио → Звук рабочего стола» поставьте «Отключено» (или нажмите «Заглушить» выше), иначе звук задвоится.';
+  if (skipped.length) t += '\nНе найдено в Windows: ' + skipped.join(', ') + '.';
+  return t;
+});
+const obsFile = () => obsRun(async () => {
+  const T = obsT();
+  if (!T) throw new Error('это работает только в установленном приложении.');
+  const col = ObsLink.collection(obsRows(), ObsLink.SCENE);
+  const path = await T.core.invoke('obs_save_collection', { name: col.name, json: JSON.stringify(col) });
+  return 'Готово: ' + path + '\nВ OBS откройте меню «Коллекция сцен» и выберите «' + col.name + '». Если пункта нет, закройте и откройте OBS.\nВ этой коллекции нет «Звука рабочего стола», поэтому ничего не задвоится.';
+});
+</script>
 <script>
 class Component extends DCLogic {
   constructor(props) {
@@ -249,6 +338,35 @@ class Component extends DCLogic {
 
     const vSig = 'background:var(--signal-soft);color:var(--signal)';
     const vWarn = 'background:var(--warn-soft);color:var(--warn)';
+    // Звук в OBS: подключение наших Out к OBS одной кнопкой (app/obs.js).
+    const pr = OBSUI.probe, hasApp = !!obsT();
+    const orows = obsRows();
+    const nOk = orows.filter((r) => r.ok).length;
+    const wsOn = !!(pr && pr.ws && pr.ws.enabled);
+    const idle = !OBSUI.busy;
+    let pill = 'background:var(--bg);color:var(--muted)', pillText = 'нет данных', intro;
+    if (!hasApp) pillText = 'только в приложении';
+    else if (!pr) pillText = 'проверяю OBS…';
+    else if (!pr.found) { pillText = 'OBS не найден'; pill = 'background:var(--warn-soft);color:var(--warn)'; }
+    else if (wsOn) { pillText = 'OBS: WebSocket включён'; pill = 'background:var(--ok-soft);color:var(--ok)'; }
+    else { pillText = 'OBS: WebSocket выключен'; pill = 'background:var(--signal-soft);color:var(--signal)'; }
+    intro = 'Звук рабочего стола в OBS видит только устройства воспроизведения (In), а наши Out это устройства записи. Микшер сам добавит их в OBS как «Захват входного аудио»: по источнику на дорожку и на шины B1, B2. Ничего ставить не нужно.'
+      + (hasApp && pr && pr.found && !wsOn ? '\nЧтобы добавить прямо в открытый OBS, включите в нём «Сервис → Настройки сервера WebSocket → Включить сервер WebSocket» (это встроено в OBS) и нажмите «Проверить OBS снова». Или создайте коллекцию сцен: она появится в меню OBS «Коллекция сцен».' : '');
+    const obs = {
+      pill, pillText, intro,
+      rows: orows.map((r) => ({
+        tag: r.tag, name: r.label, hint: r.ok ? 'найдено в Windows' : r.why, title: r.ok ? r.deviceName + ' → в OBS: ' + r.obsName : r.why,
+        hintColor: r.ok ? 'var(--muted)' : 'var(--warn)', tagStyle: r.ok ? vWarn : 'background:var(--bg);color:var(--muted)'
+      })),
+      canWs: hasApp && wsOn && nOk > 0 && idle, noWs: !(hasApp && wsOn && nOk > 0 && idle),
+      canFile: hasApp && !!(pr && pr.found) && nOk > 0 && idle, noFile: !(hasApp && !!(pr && pr.found) && nOk > 0 && idle),
+      add: obsAdd, file: obsFile, recheck: obsProbe,
+      toggleMute: () => { OBSUI.muteDesktop = !OBSUI.muteDesktop; obsRender(); },
+      mutePressed: OBSUI.muteDesktop, muteMark: OBSUI.muteDesktop ? '✓' : '',
+      muteStyle: OBSUI.muteDesktop ? 'background:var(--signal-soft);color:var(--signal);border:1px solid var(--signal)' : 'background:var(--surface-2);color:var(--fg);border:1px solid var(--line)',
+      msg: OBSUI.msg || (nOk ? '' : 'Устройства «Bogestv0 … Out» пока не найдены в Windows: проверьте, что драйвер установлен (карточка ниже).'),
+      msgColor: OBSUI.bad ? 'var(--bad)' : 'var(--muted)'
+    };
     // Драйвер (этап 6.4): st.drv = { shm, via (память от драйвера), found (устройство драйвера есть), alive, in[6], out[8] (B1, B2, Out 1..6) }
     const drv = (st && st.drv) || null;
     const via = !!(drv && drv.via);
@@ -323,11 +441,11 @@ class Component extends DCLogic {
         + ', самая долгая пауза ' + (ms2.gap / 1000).toFixed(1) + ' мс, самая долгая обработка блока ' + (ms2.proc / 1000).toFixed(2) + ' мс, перезапусков ' + ms2.rb;
     }
     const used = Object.keys(dev).filter((k) => dev[k]).length;
-    return { devices, slots, virtuals, drvText, drvPill, virtualsNote, diagText, foundCount: list.length, usedCount: used, refresh: () => B.send('devices') };
+    return { obs, devices, slots, virtuals, drvText, drvPill, virtualsNote, diagText, foundCount: list.length, usedCount: used, refresh: () => B.send('devices') };
   }
 }
 </script>
-<script>DC.mount(Component);</script>
+<script>DC.mount(Component);obsProbe();</script>
 <script src="app.js"></script>
 </body>
 </html>
