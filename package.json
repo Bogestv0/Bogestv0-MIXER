@@ -1,6 +1,6 @@
 {
   "name": "bogestv0-mixer",
-  "version": "0.5.5",
+  "version": "0.5.6",
   "private": true,
   "description": "Bogestv0 MIXER — виртуальный аудиомикшер для Windows",
   "scripts": {

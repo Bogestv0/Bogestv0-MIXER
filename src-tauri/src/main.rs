@@ -1,6 +1,8 @@
 // Не показываем консоль в релизной сборке под Windows.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod obs;
+
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -179,6 +181,18 @@ fn settings_save(app: AppHandle, json: String) -> Result<(), String> {
     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
 }
 
+/// Настройки WebSocket в OBS (порт, пароль, включён ли): окно по ним само подключается к OBS, вводить ничего не надо.
+#[tauri::command]
+fn obs_probe() -> String {
+    obs::probe().to_string()
+}
+
+/// Кладёт в папку OBS готовую коллекцию сцен с нашими Out. Возвращает путь к файлу.
+#[tauri::command]
+fn obs_save_collection(name: String, json: String) -> Result<String, String> {
+    obs::save_collection(&name, &json)
+}
+
 fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
@@ -192,7 +206,7 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![engine_send, engine_info, engine_restart, settings_load, settings_save])
+        .invoke_handler(tauri::generate_handler![engine_send, engine_info, engine_restart, settings_load, settings_save, obs_probe, obs_save_collection])
         .setup(|app| {
             let engine = Engine { stdin: Mutex::new(None), child: Mutex::new(None), boot: AtomicU64::new(0), gen: AtomicU64::new(0) };
             start_engine(app.handle(), &engine);
