@@ -13,6 +13,8 @@ SPDIF-пары: те же таблицы, но свои имена подуст�
 («Output 1», «Output 2»), массивы 2 и 3 убираются из списка устройств.
 Часть 6.8: выходы дорожек. К устройствам записи Output 1–2 (шины B1, B2) добавляются шесть стереокопий MicIn (WaveOut1..6): чистый
 звук дорожек V1..V6 для OBS. Имена в Windows: «Bogestv0 <Дорожка> In / Out» (латиницей), см. TRACKS.
+Часть 6.6 (0.5.2): формат по умолчанию 48 кГц / 16 бит / стерео у каждой конечной точки (как делают драйверы VB-Audio): Windows микширует
+сразу на 48 кГц, а драйвер не пересчитывает частоту, поэтому звук на 44,1 кГц шёл бы с другой высотой.
 Часть 6.4: мост с общей памятью движка. В EndpointsCommon добавляются наши файлы (driver/src), потоки SysVAD вместо тона и записи
 в файл гоняют звук через кольца общей памяти, драйвер создаёт управляющее устройство Bogestv0Mixer, через которое движок получает память.
 """
@@ -827,12 +829,53 @@ def finish_bridge(path: pathlib.Path, errors: list) -> int:
     return 0
 
 
+# Формат конечной точки по умолчанию (свойство PKEY_AudioEngine_OEMFormat): PROPVARIANT-блоб с WAVEFORMATEXTENSIBLE.
+# 48000 Гц, 16 бит, 2 канала (PCM). 16 бит, а не 24: форматы SPDIF-пары, с которой скопированы наши устройства, 16 бит; формат вне
+# списка поддерживаемых Windows молча игнорирует.
+OEM_FORMAT_BLOB = ("41,00,00,00,28,00,00,00,FE,FF,02,00,80,BB,00,00,00,EE,02,00,04,00,10,00,16,00,10,00,03,00,00,00,"
+                   "01,00,00,00,00,00,10,00,80,00,00,AA,00,38,9B,71")
+ASSOC_LINE = "HKR,EP\\0,%PKEY_AudioEndpoint_Association%,,%KSNODETYPE_ANY%\n"
+
+
+def patch_format(root: pathlib.Path) -> int:
+    """6.6: после каждой строки Association у каждой конечной точки добавляется формат по умолчанию 48 кГц / 16 бит / стерео."""
+    path = root / INX
+    text, enc, nl = read_text(path)
+    if "Bogestv0PkeyOEMFormat" in text:
+        print("ok: формат по умолчанию уже задан")
+        return 0
+    errors: list = []
+    n = text.count(ASSOC_LINE)
+    if n < 10:   # в примере 14 штук плюс наши; меньше десяти значит, что файл не тот
+        errors.append(f"INF: строк Association найдено {n}, ожидалось не меньше 10")
+    pk = re.search(r'^PKEY_AudioEndpoint_Association\s*=.*\n', text, re.M)
+    if not pk:
+        errors.append("INF: не найдена строка PKEY_AudioEndpoint_Association в [Strings]")
+    if errors:
+        for e in errors:
+            print("ОШИБКА: " + e, file=sys.stderr)
+        return 1
+    line = f"HKR,EP\\0,%Bogestv0PkeyOEMFormat%,%Bogestv0RegBinary%,{OEM_FORMAT_BLOB}\n"
+    text = text.replace(ASSOC_LINE, ASSOC_LINE + line)
+    text = text.replace(pk.group(0), pk.group(0)
+                        + 'Bogestv0PkeyOEMFormat = "{E4870E26-3CC5-4CD2-BA46-CA0A9A70ED04},3"\n'
+                        + 'Bogestv0RegBinary = 0x00000001\n')
+    # Самопроверка: наши токены определены.
+    for tok in sorted(set(re.findall(r"%(Bogestv0\w+)%", text))):
+        if len(re.findall(r"^" + re.escape(tok) + r"\s*=", text, re.M)) != 1:
+            print(f"ОШИБКА: INF: строка {tok} не определена ровно один раз", file=sys.stderr)
+            return 1
+    write_text(path, text, enc, nl)
+    print(f"ok: {INX}: формат 48 кГц / 16 бит / стерео у {n} конечных точек")
+    return 0
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print(__doc__)
         return 2
     root = pathlib.Path(sys.argv[1])
-    for step in (patch_inx, patch_inx_devices, patch_minipairs, patch_names, patch_outputs, patch_bridge):
+    for step in (patch_inx, patch_inx_devices, patch_minipairs, patch_names, patch_outputs, patch_bridge, patch_format):
         rc = step(root)
         if rc:
             return rc

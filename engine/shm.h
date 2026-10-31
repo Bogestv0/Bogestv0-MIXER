@@ -96,6 +96,10 @@ struct ShmRingCtl {
 };
 static_assert(sizeof(ShmRingCtl) == kShmCtlBytes, "управляющий блок кольца должен быть 128 байт");
 
+// Вид на кольцо для читателя с запасом (inbuf.h): данные, размер (степень двойки) и позиции чтения / записи
+// (счёт кадров с переполнением uint32).
+struct RingView { const float* data; uint32_t cap; uint32_t r; uint32_t w; };
+
 // Вид на одно кольцо. Не владеет памятью.
 struct ShmRing {
     ShmRingCtl* ctl = nullptr;
@@ -141,6 +145,11 @@ struct ShmRing {
         if (m < n) ctl->starved.fetch_add(n - m, std::memory_order_relaxed);
         return m;
     }
+
+    // Для читателя с запасом (inbuf.h).
+    RingView view() const { return RingView{data, cap, ctl->read_pos.load(std::memory_order_relaxed), ctl->write_pos.load(std::memory_order_acquire)}; }
+    void commit(uint32_t new_read_pos) { ctl->read_pos.store(new_read_pos, std::memory_order_release); }
+    void on_silence(uint32_t n) { ctl->starved.fetch_add(n, std::memory_order_relaxed); }
 
     // Выбросить накопленное. Только для читающей стороны.
     void discard() { ctl->read_pos.store(ctl->write_pos.load(std::memory_order_acquire), std::memory_order_release); }

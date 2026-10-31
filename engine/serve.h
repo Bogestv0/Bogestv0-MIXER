@@ -54,7 +54,18 @@ struct Ring {
     size_t cap = 0;
     std::atomic<size_t> r{0}, w{0};
 
-    void init(size_t frames) { cap = frames; buf.assign(frames * 2, 0.0f); r = 0; w = 0; }
+    void init(size_t frames) { cap = frames; buf.assign(frames * 2, 0.0f); r = 0; w = 0; }   // frames: степень двойки
+
+    // Для читателя с запасом (inbuf.h). Позиции r и w у кольца 64-битные, читателю нужны младшие 32 бита: размер кольца степень двойки.
+    RingView view() const {
+        return RingView{buf.data(), static_cast<uint32_t>(cap), static_cast<uint32_t>(r.load(std::memory_order_relaxed)),
+                        static_cast<uint32_t>(w.load(std::memory_order_acquire))};
+    }
+    void commit(uint32_t new_read_pos) {
+        const size_t cur = r.load(std::memory_order_relaxed);
+        r.store(cur + static_cast<uint32_t>(new_read_pos - static_cast<uint32_t>(cur)), std::memory_order_release);
+    }
+    void on_silence(uint32_t) {}
 
     // Выбросить накопленное. Вызывать, только когда читающее устройство остановлено.
     void clear() { r.store(w.load(std::memory_order_acquire), std::memory_order_release); }
@@ -148,6 +159,8 @@ public:
             }
         }
         for (int i = 0; i < kStrips; ++i) { strips[i].hw = i < 2; strips[i].ring.init(8192); }
+        for (int i = 0; i < kMics; ++i) mic_rd_[i].configure(kHwTargetFrames);
+        for (int k = 0; k < kBuses; ++k) bus_rd_[k].configure(kHwTargetFrames);
         for (int k = 0; k < kBuses; ++k) buses[k].ring.init(8192);
         for (int s = 0; s < kSlots; ++s) { roles_[s] = {this, s}; ok_[s] = false; }
         acc_.assign(kBuses, std::vector<float>(kMaxBlock * 2));
@@ -239,7 +252,11 @@ public:
                 if (dev_[s] || names_[s].empty() || !find_id(s, names_[s]) || now < retry_at_[s]) continue;
                 std::string e;
                 open_slot(s, false, e);
-                if (ok_[s]) { changed = true; fails_[s] = 0; if (s >= 2) buses[s - 2].ring.clear(); }
+                if (ok_[s]) {
+                    changed = true; fails_[s] = 0;
+                    if (s >= 2) { buses[s - 2].ring.clear(); bus_rd_[s - 2].request_reset(); }
+                    else mic_rd_[s].request_reset();
+                }
                 else if (fails_[s] == 1) err += e;   // об ошибке говорим один раз, дальше тихо пробуем реже
             }
         }
@@ -333,6 +350,16 @@ public:
         for (int i = 0; i < kShmInRings; ++i) o << (i ? "," : "") << in_rd_[i].opens.load(std::memory_order_relaxed);
         o << "],\"closes\":[";
         for (int i = 0; i < kShmInRings; ++i) o << (i ? "," : "") << in_rd_[i].closes.load(std::memory_order_relaxed);
+        // Остальные кольца движка (читатель с запасом ~10 мс): HW1, HW2 и A1..B2 (у ведущего устройства читателя нет, там нули).
+        o << "]},\"hw\":{\"fill\":[";
+        for (int i = 0; i < kMics; ++i) o << (i ? "," : "") << mic_rd_[i].fill.load(std::memory_order_relaxed);
+        for (int k = 0; k < kBuses; ++k) o << "," << bus_rd_[k].fill.load(std::memory_order_relaxed);
+        o << "],\"under\":[";
+        for (int i = 0; i < kMics; ++i) o << (i ? "," : "") << mic_rd_[i].under.load(std::memory_order_relaxed);
+        for (int k = 0; k < kBuses; ++k) o << "," << bus_rd_[k].under.load(std::memory_order_relaxed);
+        o << "],\"adj\":[";
+        for (int i = 0; i < kMics; ++i) o << (i ? "," : "") << mic_rd_[i].adj_ppm.load(std::memory_order_relaxed);
+        for (int k = 0; k < kBuses; ++k) o << "," << bus_rd_[k].adj_ppm.load(std::memory_order_relaxed);
         o << "]}}}";
         return o.str();
     }
@@ -439,6 +466,8 @@ private:
     bool driver_found_ = false;
     std::string driver_note_;
     ShmRing shm_in_[kShmInRings], shm_out_[kShmOutRings];
+    InReader mic_rd_[kMics];                       // микрофоны HW1, HW2: кольцо захвата -> главный проход
+    InReader bus_rd_[kBuses];                      // вторичные выходы A2, A3, B1, B2: главный проход -> кольцо -> устройство
     InReader in_rd_[kShmInRings];                  // чтение колец входов с запасом (счётчики для диагностики внутри)
     bool drv_was_active_[kShmInRings] = {};        // только аудио-поток
     uint32_t last_driver_beat_ = 0;                // только сторож
@@ -530,6 +559,8 @@ private:
         std::string err;
         for (int i = 0; i < kStrips; ++i) strips[i].ring.init(8192);
         for (int k = 0; k < kBuses; ++k) buses[k].ring.init(8192);
+        for (int i = 0; i < kMics; ++i) mic_rd_[i].request_reset();
+        for (int k = 0; k < kBuses; ++k) bus_rd_[k].request_reset();
         for (int s = 0; s < kSlots; ++s) { ok_[s] = false; fails_[s] = 0; miss_[s] = 0; retry_at_[s] = {}; }
         rebuild_fails_ = 0;
         rebuild_at_ = {};
@@ -566,7 +597,7 @@ private:
     }
     static void cb_bus(ma_device* d, void* out, const void*, ma_uint32 frames) {
         Role* r = static_cast<Role*>(d->pUserData);
-        r->m->buses[r->slot - 2].ring.pop(static_cast<float*>(out), frames);
+        r->m->bus_rd_[r->slot - 2].read(r->m->buses[r->slot - 2].ring, static_cast<float*>(out), static_cast<uint32_t>(frames));
     }
     static void cb_master(ma_device* d, void* out, const void*, ma_uint32 frames) {
         Role* r = static_cast<Role*>(d->pUserData);
@@ -620,7 +651,7 @@ private:
                 Strip& s = strips[i];
                 float* t = tmp_.data();
                 if (s.hw) {
-                    s.ring.pop(t, n);
+                    mic_rd_[i].read(s.ring, t, static_cast<uint32_t>(n));   // запас ~10 мс и подстройка под часы микрофона (inbuf.h)
                     if (i < kMics && ok_[i]) mic[i].process(t, n);   // обработка микрофона
                 } else if (shm_ && s.src.load(std::memory_order_relaxed) == SRC_OFF && shm_in_[i - 2].active()) {
                     ShmRing& rg = shm_in_[i - 2];

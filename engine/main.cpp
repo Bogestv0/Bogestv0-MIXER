@@ -19,6 +19,7 @@
 #include <cstring>
 #include <string>
 #include <thread>
+#include <type_traits>
 #include <vector>
 
 #ifdef _WIN32
@@ -253,6 +254,8 @@ struct InSim {
     double secs = 60.0;
     double stall_at = -1.0, stall_len = 0.0;   // драйвер замолчал, потом выдал накопленное разом
     uint32_t block = 128;
+    uint32_t burst = 480;      // сколько кадров в одной порции
+    uint32_t target = bg::kInTargetFrames;
     bool legacy = false;       // читать старым способом (pop без запаса) для сравнения
 };
 struct InSimRes {
@@ -260,17 +263,21 @@ struct InSimRes {
     double fill_min = 1e9, fill_max = 0, fill_end = 0;
     int32_t adj_end = 0;
 };
-static InSimRes run_in_sim(bg::Shm& shm, const InSim& c) {
-    bg::ShmRing rg = shm.in(0);
-    rg.discard();
-    rg.ctl->starved.store(0);
+template <class R> static void sim_reset(R& rg) { rg.commit(rg.view().w); }
+template <class R> static void sim_legacy_pop(R& rg, float* out, uint32_t n) {
+    if constexpr (std::is_same<R, bg::ShmRing>::value) rg.pop(out, n, std::max<uint32_t>(n * 3, 960));
+    else rg.pop(out, n);
+}
+template <class R> static InSimRes run_in_sim(R& rg, const InSim& c) {
+    sim_reset(rg);
     bg::InReader rd;
+    rd.configure(c.target);
     rd.open(rg);
     InSimRes res;
-    std::vector<float> src(480 * 2), out(c.block * 2);
+    std::vector<float> src(c.burst * 2), out(c.block * 2);
     uint32_t seed = 12345;
     auto rnd = [&]() { seed ^= seed << 13; seed ^= seed >> 17; seed ^= seed << 5; return (seed & 0xFFFFFF) / 16777216.0; };
-    const double period = 480.0 / (48000.0 * c.clock);
+    const double period = c.burst / (48000.0 * c.clock);
     uint64_t sent = 0;                  // сколько кадров синуса отдано в кольцо
     double next_at = 0.0, prev_at = 0.0;
     auto arrival = [&](int k) {
@@ -287,11 +294,11 @@ static InSimRes run_in_sim(bg::Shm& shm, const InSim& c) {
     for (uint64_t b = 0; b < blocks; ++b) {
         const double te = static_cast<double>(b) * c.block / 48000.0;
         while (next_at <= te) {
-            for (int i = 0; i < 480; ++i, ++sent) src[i * 2] = src[i * 2 + 1] = 0.5f * static_cast<float>(std::sin(6.283185307179586 * 440.0 * static_cast<double>(sent) / 48000.0));
-            rg.push(src.data(), 480);
+            for (uint32_t i = 0; i < c.burst; ++i, ++sent) src[i * 2] = src[i * 2 + 1] = 0.5f * static_cast<float>(std::sin(6.283185307179586 * 440.0 * static_cast<double>(sent) / 48000.0));
+            rg.push(src.data(), c.burst);
             prev_at = next_at; ++k; next_at = arrival(k);
         }
-        if (c.legacy) rg.pop(out.data(), c.block, std::max<uint32_t>(c.block * 3, 960));
+        if (c.legacy) sim_legacy_pop(rg, out.data(), c.block);
         else rd.read(rg, out.data(), c.block);
         for (uint32_t i = 0; i < c.block; ++i) {
             const float x = out[i * 2];
@@ -321,6 +328,7 @@ static int selftest_inbuf() {
         auto shm = bg::Shm::open(nm, bg::Shm::Role::Engine, err);
         if (!shm) { std::printf("пропущено: нет общей памяти (%s)\n", err.c_str()); return 0; }
         const double target = bg::kInTargetFrames;
+        bg::ShmRing ring0 = shm->in(0);
 
         InSim a;
         // Для сравнения: старое чтение (без запаса) на тех же данных. Само по себе дрожание оно переживает (запас накапливается
@@ -328,33 +336,33 @@ static int selftest_inbuf() {
         // при быстром запас растёт, и лишнее приходится выбрасывать.
         InSim lo = a; lo.clock = 0.999; lo.legacy = true;
         InSim hi = a; hi.clock = 1.001; hi.legacy = true;
-        InSimRes old_lo = run_in_sim(*shm, lo), old_hi = run_in_sim(*shm, hi);
+        InSimRes old_lo = run_in_sim(ring0, lo), old_hi = run_in_sim(ring0, hi);
         std::printf("      (старое чтение, 60 с: драйвер медленнее на 0,1 %%: провалов %u; быстрее на 0,1 %%: щелчков %u)\n", old_lo.gaps, old_hi.clicks);
         check(old_lo.gaps > 0, "(проверка самой проверки) старое чтение без запаса при расхождении часов даёт провалы звука");
 
-        InSimRes r = run_in_sim(*shm, a);
+        InSimRes r = run_in_sim(ring0, a);
         check(r.gaps == 0 && r.clicks == 0 && r.under == 0 && r.trim == 0, "дрожание порций до 8 мс: ни провалов, ни щелчков, кольцо ни разу не опустело");
         check(std::fabs(r.fill_min - target) < 250 && std::fabs(r.fill_max - target) < 250, "запас держится у цели 25 мс");
         std::printf("      (запас %.0f…%.0f кадров, цель %.0f)\n", r.fill_min, r.fill_max, target);
 
         InSim a2 = a; a2.block = 441; a2.secs = 30;
-        r = run_in_sim(*shm, a2);
+        r = run_in_sim(ring0, a2);
         check(r.gaps == 0 && r.clicks == 0 && r.under == 0, "блок 441 кадр (не кратен порции): тоже чисто");
 
         InSim f = a; f.clock = 1.001;
-        r = run_in_sim(*shm, f);
+        r = run_in_sim(ring0, f);
         check(r.gaps == 0 && r.clicks == 0 && r.under == 0 && r.trim == 0, "драйвер быстрее на 0,1 %: чисто, ничего не выброшено");
         check(std::fabs(r.fill_end - target) < 250 && std::abs(r.adj_end - 1000) < 300, "запас остался у цели, скорость чтения подстроилась на +0,1 %");
         std::printf("      (запас в конце %.0f, подстройка %d ppm)\n", r.fill_end, r.adj_end);
 
         InSim s = a; s.clock = 0.999;
-        r = run_in_sim(*shm, s);
+        r = run_in_sim(ring0, s);
         check(r.gaps == 0 && r.clicks == 0 && r.under == 0, "драйвер медленнее на 0,1 %: чисто, кольцо не опустело");
         check(std::fabs(r.fill_end - target) < 250 && std::abs(r.adj_end + 1000) < 300, "запас остался у цели, скорость чтения подстроилась на −0,1 %");
         std::printf("      (запас в конце %.0f, подстройка %d ppm)\n", r.fill_end, r.adj_end);
 
         InSim t = a; t.stall_at = 10.0; t.stall_len = 0.1;
-        r = run_in_sim(*shm, t);
+        r = run_in_sim(ring0, t);
         check(r.gaps == 1 && r.under == 1, "драйвер замолчал на 100 мс: одна тишина и один подсчёт, а не хрип на каждой порции");
         check(r.clicks <= 2 && std::fabs(r.fill_end - target) < 250, "после паузы звук продолжается чисто, запас вернулся к цели");
         std::printf("      (после паузы выброшено %u кадров, запас в конце %.0f)\n", r.trim, r.fill_end);
@@ -377,6 +385,32 @@ static int selftest_inbuf() {
         check(rd.opens.load() == 2 && rd.closes.load() == 1, "счётчики открытий и закрытий потока");
     }
     bg::Shm::unlink_name(nm);
+
+    // Те же проверки для внутренних колец движка (микрофоны, вторичные выходы): порции по 256 кадров, дрожание 1 мс,
+    // запас ~10 мс, часы железа расходятся до ±0,05 % (USB-микрофон и звуковая карта).
+    {
+        auto mk = [](double clock, bool legacy) { InSim x; x.clock = clock; x.burst = 256; x.jitter_ms = 1.0; x.target = bg::kHwTargetFrames; x.legacy = legacy; return x; };
+        const double tg = bg::kHwTargetFrames;
+        bg::Ring ring;
+        ring.init(8192);
+        for (double clk : {0.9995, 1.0, 1.0005}) {
+            ring.init(8192);
+            const InSimRes n = run_in_sim(ring, mk(clk, false));
+            ring.init(8192);
+            const InSimRes o = run_in_sim(ring, mk(clk, true));
+            std::printf("      (кольцо микрофона, часы %.4f: без запаса провалов %u, щелчков %u; с запасом провалов %u, щелчков %u, запас %.0f…%.0f, подстройка %d ppm)\n",
+                        clk, o.gaps, o.clicks, n.gaps, n.clicks, n.fill_min, n.fill_max, n.adj_end);
+            check(n.gaps == 0 && n.clicks == 0 && n.under == 0 && n.trim == 0, "внутреннее кольцо с запасом 10 мс: чисто при расхождении часов");
+            check(std::fabs(n.fill_min - tg) < 200 && std::fabs(n.fill_max - tg) < 200, "запас внутреннего кольца держится у цели");
+            if (clk < 1.0) check(o.gaps > 0, "(проверка самой проверки) старое чтение внутреннего кольца при медленном источнике даёт провалы");
+        }
+        // Счётчики позиций идут с переполнением uint32: кольцо должно работать и через границу.
+        ring.init(8192);
+        ring.r = 0xFFFFFFFFFFFFFF00ull; ring.w = 0xFFFFFFFFFFFFFF00ull;
+        InSim x = mk(1.0, false); x.secs = 5;
+        const InSimRes n = run_in_sim(ring, x);
+        check(n.gaps == 0 && n.clicks == 0 && n.under == 0, "внутреннее кольцо работает через границу счётчика позиций");
+    }
     return bad;
 }
 
@@ -492,7 +526,7 @@ static int selftest_driver_mixer() {
             check(drv != nullptr, "драйвер подключился к памяти движка");
             check(m.command("set dev a1 " + dev).empty() && m.slot_ok(2), "ведущее устройство A1 открылось");
             m.command("set strip 3 route 3 1");   // V2 («Музыка») -> B1
-            check(m.state_json().find("\"drv\":{\"shm\":1,\"via\":0,\"found\":0,\"alive\":0,\"in\":[0,0,0,0,0,0],\"out\":[0,0,0,0,0,0,0,0],\"diag\":{\"rate\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"starved\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"drops\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"trim\":[0,0,0,0,0,0],\"fill\":[0,0,0,0,0,0],\"under\":[0,0,0,0,0,0],\"adj\":[0,0,0,0,0,0],\"opens\":[0,0,0,0,0,0],\"closes\":[0,0,0,0,0,0]}}") != std::string::npos, "состояние: драйвера пока нет, диагностика колец нулевая");
+            check(m.state_json().find("\"drv\":{\"shm\":1,\"via\":0,\"found\":0,\"alive\":0,\"in\":[0,0,0,0,0,0],\"out\":[0,0,0,0,0,0,0,0],\"diag\":{\"rate\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"starved\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"drops\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"trim\":[0,0,0,0,0,0],\"fill\":[0,0,0,0,0,0],\"under\":[0,0,0,0,0,0],\"adj\":[0,0,0,0,0,0],\"opens\":[0,0,0,0,0,0],\"closes\":[0,0,0,0,0,0]},\"hw\":{\"fill\":[0,0,0,0,0,0,0],\"under\":[0,0,0,0,0,0,0],\"adj\":[0,0,0,0,0,0,0]}}") != std::string::npos, "состояние: драйвера пока нет, диагностика колец нулевая");
 
             // «Драйвер»: открывает Input 2 и Output 1, пишет постоянный сигнал в Input 2 и читает Output 1.
             bg::ShmRing in2 = drv->in(1), out1 = drv->out(0);

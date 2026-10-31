@@ -270,7 +270,7 @@ class Component extends DCLogic {
     virtuals.push({ tag: 'B2', name: 'Bogestv0 Mix B2 Out', hint: openOut(1) || 'общий микс B2 для звонков', tagStyle: vWarn });
     tracks.forEach((tr, i) => virtuals.push({ tag: 'T' + (i + 1), name: 'Bogestv0 ' + tr[0] + ' Out', hint: openOut(2 + i) || 'звук дорожки V' + (i + 1) + ' для OBS (до фейдера)', tagStyle: vWarn }));
     const virtualsNote = via
-      ? 'Звук идёт через драйвер: в программе (Spotify, игра, Discord) выберите «Bogestv0 … In» устройством вывода (Games, Music, Discord, Browser 1, Donations, Browser 2). «Bogestv0 … Out» видят OBS и Discord как микрофон: у каждой дорожки свой чистый звук (до фейдера), а «Mix B1/B2 Out» отдают общие шины. Если у устройства в Windows частота не 48 000 Гц, звук пойдёт с другой высотой: поставьте 48 000 Гц в свойствах устройства (позже это сделается само).'
+      ? 'Звук идёт через драйвер: в программе (Spotify, игра, Discord) выберите «Bogestv0 … In» устройством вывода (Games, Music, Discord, Browser 1, Donations, Browser 2). «Bogestv0 … Out» видят OBS и Discord как микрофон: у каждой дорожки свой чистый звук (до фейдера), а «Mix B1/B2 Out» отдают общие шины. Драйвер с версии 0.5.2 по умолчанию ставит 48 000 Гц, 16 бит. Если у какого-то устройства в Windows всё же другая частота (старая установка), звук пойдёт с другой высотой: поставьте 48 000 Гц в его свойствах.'
       : found
         ? 'Драйвер установлен, но движок не смог получить от него память. Подробности в сообщении об ошибке внизу окна. Пока V1–V6 проверяются тест-сигналом на экране «Микшер».'
         : 'Драйвера нет: V1–V6 проверяются тест-сигналом на экране «Микшер». Установка драйвера описана в docs/ЭТАП-6.md (часть 6.3). Для проверки B1 и B2 можно назначить любой выход (например, виртуальный кабель).';
@@ -299,6 +299,19 @@ class Component extends DCLogic {
         lines.push(s);
       }
       if (lines.length) diagText = 'Диагностика (с запуска движка; смотрите, какое число растёт во время хрипа):\n' + lines.join('\n');
+    }
+    // Остальные кольца движка (с 0.5.2): микрофоны и вторичные выходы читаются с запасом ~10 мс. Показываем только работающие.
+    const hw = drv && drv.hw ? drv.hw : null;
+    if (hw && hw.fill) {
+      const hnames = ['HW1 (микрофон)', 'HW2 (микрофон)', 'A1', 'A2', 'A3', 'B1', 'B2'];
+      const hl = [];
+      for (let i = 0; i < hnames.length; i++) {
+        const f = hw.fill[i] || 0, u = (hw.under && hw.under[i]) || 0;
+        if (!f && !u) continue;   // не открыто или ведущее устройство (у него нет кольца)
+        const adj = ((hw.adj && hw.adj[i]) || 0) / 10000;
+        hl.push(hnames[i] + ': запас ' + (f / 48).toFixed(1) + ' мс (цель 10 мс), подстройка ' + (adj > 0 ? '+' : '') + adj.toFixed(2) + ' %, опустошений ' + u);
+      }
+      if (hl.length) diagText += (diagText ? '\n' : '') + 'Устройства микшера (запас на входе и подстройка под часы):\n' + hl.join('\n');
     }
     const used = Object.keys(dev).filter((k) => dev[k]).length;
     return { devices, slots, virtuals, drvText, drvPill, virtualsNote, diagText, foundCount: list.length, usedCount: used, refresh: () => B.send('devices') };
