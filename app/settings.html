@@ -297,7 +297,7 @@ class Component extends DCLogic {
       sw('lockGui', 'Заблокировать интерфейс', 'Фейдеры, крутилки и кнопки не сдвинутся случайно. Меню и эти настройки работают.', line)
     ];
     const startRows = [
-      sw('autostart', 'Запускать вместе с Windows', 'Появится в этапе 8.2 (автозапуск и обновление драйвера).', 'none', { off: true })
+      sw('autostart', 'Запускать вместе с Windows', 'Микшер включается при входе в систему сразу в трей, и звук работает сразу. ' + needApp, 'none', { off: !inTauri })
     ];
 
     const unsaved = !!B.unsaved;

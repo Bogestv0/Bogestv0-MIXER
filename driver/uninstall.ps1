@@ -19,6 +19,11 @@ if ($Auto -and ($env:BOGESTV0_UNINST_CMD -match '/UPDATE')) {
     exit 0
 }
 
+# Настоящее удаление микшера (не обновление): заодно убираем его автозапуск с Windows.
+if ($Auto) {
+    try { Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'Bogestv0 MIXER' -ErrorAction SilentlyContinue } catch {}
+}
+
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host 'ОШИБКА: запустите PowerShell от имени администратора.' -ForegroundColor Red; exit 1
 }

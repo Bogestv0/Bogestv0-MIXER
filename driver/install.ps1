@@ -27,6 +27,9 @@ $inf   = Join-Path $here 'ComponentizedAudioSample.inf'
 $cer   = Join-Path $here 'package.cer'
 $hwid  = 'Root\Sysvad_ComponentizedAudioSample'
 $taskName = 'Bogestv0DriverSetup'
+# Файл-метка `attested.flag` рядом со скриптом кладёт сборка, когда драйвер подписан Microsoft (этап 8.3, Partner Center).
+# Тогда тестовый режим Windows и наш тестовый сертификат не нужны.
+$attested = Test-Path (Join-Path $here 'attested.flag')
 
 $dataDir = Join-Path $env:ProgramData 'Bogestv0'
 try { New-Item -ItemType Directory -Force $dataDir | Out-Null; Start-Transcript -Path (Join-Path $dataDir 'driver-setup.log') -Append | Out-Null } catch {}
@@ -42,7 +45,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     Stop-With 'запустите PowerShell от имени администратора.'
 }
 if (-not (Test-Path $inf)) { Stop-With "не найден $inf. Запускайте скрипт из папки с распакованным драйвером." }
-if (-not (Test-Path $cer)) { Stop-With "не найден $cer." }
+if (-not $attested -and -not (Test-Path $cer)) { Stop-With "не найден $cer." }
 
 # Подпись набора файлов: если она совпала с последней удачной установкой и устройство работает, драйвер не трогаем.
 # Так обновление микшера не переставляет драйвер (а с ним и устройства «по умолчанию» в Windows) без нужды.
@@ -60,7 +63,7 @@ if ($Auto -and (Test-Path $sigFile) -and ((Get-Content $sigFile -Raw).Trim() -eq
 
 # 1. Тестовый режим (без него Windows не примет тестовую подпись)
 $bcd = (bcdedit /enum '{current}') -join "`n"
-if ($bcd -notmatch '(?im)^\s*testsigning\s+Yes') {
+if (-not $attested -and $bcd -notmatch '(?im)^\s*testsigning\s+Yes') {
     if (-not $Auto) {
         Stop-With "тестовый режим выключен. Выполните 'bcdedit /set testsigning on', перезагрузитесь и запустите скрипт снова (Secure Boot должен быть выключен)."
     }
@@ -100,8 +103,10 @@ if ($Auto -and (Get-OurDevice)) {
 
 # 2. Сертификат в оба хранилища
 Write-Host '1/3 Сертификат...'
-certutil -addstore Root $cer | Out-Null
-certutil -addstore TrustedPublisher $cer | Out-Null
+if (-not $attested) {
+    certutil -addstore Root $cer | Out-Null
+    certutil -addstore TrustedPublisher $cer | Out-Null
+}
 
 # 3. Пакет драйвера в хранилище драйверов
 Write-Host '2/3 Пакет драйвера...'

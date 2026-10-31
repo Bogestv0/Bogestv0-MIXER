@@ -234,6 +234,16 @@
   B.audioOf = () => (B.state && B.state.aud) || B.settings.audio;
   // Настройки программы: пишем в файл настроек и сообщаем оболочке Tauri (трей, закрытие окна, поверх окон).
   B.setApp = function (patch) {
+    if ('autostart' in patch) {
+      // Автозапуск живёт в реестре Windows: меняем там, и только при успехе запоминаем выбор.
+      const want = !!patch.autostart;
+      if (B.mode !== 'tauri') { B.notice('Автозапуск работает в установленном приложении.'); return; }
+      T.core.invoke('autostart_set', { enabled: want })
+        .then(() => { B.settings.app.autostart = want; emit('app'); B.saveSettings(); })
+        .catch((e) => { B.lastError = 'Не удалось изменить автозапуск: ' + e; emit('err'); });
+      delete patch.autostart;
+      if (!Object.keys(patch).length) return;
+    }
     Object.assign(B.settings.app, patch);
     if ('reconnect' in patch || 'scope' in patch) {
       const a = B.settings.app;
@@ -396,6 +406,10 @@
       } catch (e) { /* открыто просто как файл: движка нет */ }
     }
     await loadSettings();
+    if (B.mode === 'tauri') {
+      // Автозапуск: истина в реестре (пользователь мог выключить его в диспетчере задач).
+      try { B.settings.app.autostart = !!(await T.core.invoke('autostart_get')); } catch (e) { /* оставляем сохранённое */ }
+    }
     emit('conn');
     if (B.mode === 'none') return;
     B.send('devices');
