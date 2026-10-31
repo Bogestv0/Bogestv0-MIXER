@@ -46,7 +46,7 @@ constexpr int kSlots = 7;
 constexpr int kMics = 2;
 constexpr size_t kMaxBlock = 4096;  // самый большой блок за один проход
 static const char* kSlotNames[kSlots] = {"hw1", "hw2", "a1", "a2", "a3", "b1", "b2"};
-static const char* kEngineVersion = "0.3.0";
+static const char* kEngineVersion = "0.5.3";
 
 // Кольцо «один пишет, один читает» для стерео-кадров. Связывает потоки разных устройств.
 struct Ring {
@@ -344,6 +344,8 @@ public:
         for (int i = 0; i < kShmInRings; ++i) o << (i ? "," : "") << in_rd_[i].fill.load(std::memory_order_relaxed);
         o << "],\"under\":[";
         for (int i = 0; i < kShmInRings; ++i) o << (i ? "," : "") << in_rd_[i].under.load(std::memory_order_relaxed);
+        o << "],\"tgt\":[";
+        for (int i = 0; i < kShmInRings; ++i) o << (i ? "," : "") << in_rd_[i].tgt.load(std::memory_order_relaxed);
         o << "],\"adj\":[";
         for (int i = 0; i < kShmInRings; ++i) o << (i ? "," : "") << in_rd_[i].adj_ppm.load(std::memory_order_relaxed);
         o << "],\"opens\":[";
@@ -357,6 +359,9 @@ public:
         o << "],\"under\":[";
         for (int i = 0; i < kMics; ++i) o << (i ? "," : "") << mic_rd_[i].under.load(std::memory_order_relaxed);
         for (int k = 0; k < kBuses; ++k) o << "," << bus_rd_[k].under.load(std::memory_order_relaxed);
+        o << "],\"tgt\":[";
+        for (int i = 0; i < kMics; ++i) o << (i ? "," : "") << mic_rd_[i].tgt.load(std::memory_order_relaxed);
+        for (int k = 0; k < kBuses; ++k) o << "," << bus_rd_[k].tgt.load(std::memory_order_relaxed);
         o << "],\"adj\":[";
         for (int i = 0; i < kMics; ++i) o << (i ? "," : "") << mic_rd_[i].adj_ppm.load(std::memory_order_relaxed);
         for (int k = 0; k < kBuses; ++k) o << "," << bus_rd_[k].adj_ppm.load(std::memory_order_relaxed);
@@ -657,7 +662,10 @@ private:
                     ShmRing& rg = shm_in_[i - 2];
                     InReader& rd = in_rd_[i - 2];
                     if (!drv_was_active_[i - 2]) { rd.open(rg); drv_was_active_[i - 2] = true; }   // поток только что открылся: старое не нужно, ждём запас
-                    rd.read(rg, t, static_cast<uint32_t>(n));   // запас 25 мс и подстройка под часы драйвера (inbuf.h)
+                    // Частота, с которой Windows открыла поток (драйвер не пересчитывает: кадры в кольце идут с ней), запас 25 мс и
+                    // подстройка под часы драйвера (inbuf.h).
+                    const uint32_t hz = *reinterpret_cast<const volatile uint32_t*>(&shm_->header()->reserved[i - 2]);
+                    rd.read(rg, t, static_cast<uint32_t>(n), hz);
                 } else {
                     if (i >= 2 && drv_was_active_[i - 2]) {
                         drv_was_active_[i - 2] = false;

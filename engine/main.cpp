@@ -257,11 +257,18 @@ struct InSim {
     uint32_t burst = 480;      // сколько кадров в одной порции
     uint32_t target = bg::kInTargetFrames;
     bool legacy = false;       // читать старым способом (pop без запаса) для сравнения
+    bool adaptive = true;      // false = запас фиксированный (как в 0.5.2)
+    uint32_t hz = 48000;       // частота кадров в кольце (Windows открыла поток не на 48 кГц)
+    double tone = 440.0;       // частота синуса на входе, Гц
+    double phase_ms = 0.0;     // сдвиг всех порций относительно блоков движка
+    bool sym = false;          // дрожание в обе стороны (±jitter_ms): порция может прийти и раньше, и позже чтения, как в Windows
 };
 struct InSimRes {
-    uint32_t gaps = 0, clicks = 0, under = 0, trim = 0;
+    uint32_t gaps = 0, clicks = 0, under = 0, trim = 0, grown = 0;
     double fill_min = 1e9, fill_max = 0, fill_end = 0;
     int32_t adj_end = 0;
+    double freq = 0.0;         // частота синуса на выходе (по переходам через ноль), Гц
+    uint32_t tgt_end = 0;      // цель запаса в конце
 };
 template <class R> static void sim_reset(R& rg) { rg.commit(rg.view().w); }
 template <class R> static void sim_legacy_pop(R& rg, float* out, uint32_t n) {
@@ -271,38 +278,40 @@ template <class R> static void sim_legacy_pop(R& rg, float* out, uint32_t n) {
 template <class R> static InSimRes run_in_sim(R& rg, const InSim& c) {
     sim_reset(rg);
     bg::InReader rd;
-    rd.configure(c.target);
+    rd.configure(c.target, c.adaptive);
     rd.open(rg);
     InSimRes res;
     std::vector<float> src(c.burst * 2), out(c.block * 2);
     uint32_t seed = 12345;
     auto rnd = [&]() { seed ^= seed << 13; seed ^= seed >> 17; seed ^= seed << 5; return (seed & 0xFFFFFF) / 16777216.0; };
-    const double period = c.burst / (48000.0 * c.clock);
+    const double period = c.burst / (static_cast<double>(c.hz) * c.clock);
     uint64_t sent = 0;                  // сколько кадров синуса отдано в кольцо
     double next_at = 0.0, prev_at = 0.0;
     auto arrival = [&](int k) {
-        double t = k * period + (k == 0 ? 0.0 : rnd() * c.jitter_ms * 1e-3);   // первая порция вовремя: самый невыгодный момент начала
+        double t = c.phase_ms * 1e-3 + k * period + (k == 0 ? 0.0 : (c.sym ? (rnd() * 2.0 - 1.0) : rnd()) * c.jitter_ms * 1e-3);   // первая порция вовремя: самый невыгодный момент начала
+        if (t < 0.0) t = 0.0;
         if (c.stall_at >= 0 && t >= c.stall_at && t < c.stall_at + c.stall_len) t = c.stall_at + c.stall_len;
         return std::max(t, prev_at);   // порции не обгоняют друг друга
     };
     int k = 0;
     next_at = arrival(k);
     float prev = 0.0f;
-    uint32_t zero_run = 0;
+    uint32_t zero_run = 0, crossings = 0;
     bool started = false;
     uint64_t blocks = static_cast<uint64_t>(c.secs * 48000.0 / c.block);
     for (uint64_t b = 0; b < blocks; ++b) {
         const double te = static_cast<double>(b) * c.block / 48000.0;
         while (next_at <= te) {
-            for (uint32_t i = 0; i < c.burst; ++i, ++sent) src[i * 2] = src[i * 2 + 1] = 0.5f * static_cast<float>(std::sin(6.283185307179586 * 440.0 * static_cast<double>(sent) / 48000.0));
+            for (uint32_t i = 0; i < c.burst; ++i, ++sent) src[i * 2] = src[i * 2 + 1] = 0.5f * static_cast<float>(std::sin(6.283185307179586 * c.tone * static_cast<double>(sent) / static_cast<double>(c.hz)));
             rg.push(src.data(), c.burst);
             prev_at = next_at; ++k; next_at = arrival(k);
         }
         if (c.legacy) sim_legacy_pop(rg, out.data(), c.block);
-        else rd.read(rg, out.data(), c.block);
+        else rd.read(rg, out.data(), c.block, c.hz);
         for (uint32_t i = 0; i < c.block; ++i) {
             const float x = out[i * 2];
             if (te > 1.0) {
+                if (prev < 0.0f && x >= 0.0f && prev != 0.0f) ++crossings;
                 if (x == 0.0f) { if (++zero_run == 16) ++res.gaps; } else zero_run = 0;
                 if (started && x != 0.0f && prev != 0.0f && std::fabs(x - prev) > 0.08f) ++res.clicks;
             }
@@ -314,8 +323,9 @@ template <class R> static InSimRes run_in_sim(R& rg, const InSim& c) {
             res.fill_min = std::min(res.fill_min, f); res.fill_max = std::max(res.fill_max, f);
         }
     }
-    res.under = rd.under.load(); res.trim = rd.trim.load();
-    res.fill_end = rd.fill.load(); res.adj_end = rd.adj_ppm.load();
+    res.under = rd.under.load(); res.trim = rd.trim.load(); res.grown = rd.grown.load();
+    res.fill_end = rd.fill.load(); res.adj_end = rd.adj_ppm.load(); res.tgt_end = rd.tgt.load();
+    res.freq = crossings / std::max(1.0, c.secs - 1.0);
     return res;
 }
 
@@ -410,6 +420,80 @@ static int selftest_inbuf() {
         InSim x = mk(1.0, false); x.secs = 5;
         const InSimRes n = run_in_sim(ring, x);
         check(n.gaps == 0 && n.clicks == 0 && n.under == 0, "внутреннее кольцо работает через границу счётчика позиций");
+    }
+
+    // 0.5.3, часть 1: Windows открыла поток не на 48 кГц, драйвер частоту не пересчитывает. Кадры в кольце идут с частотой потока,
+    // движок должен сам привести их к 48 кГц: тон 440 Гц остаётся 440 Гц (раньше он играл бы на 8 % ниже и с треском).
+    {
+        bg::Ring ring;
+        auto mk = [](uint32_t hz, double clock) { InSim x; x.hz = hz; x.burst = hz / 100; x.jitter_ms = 4.0; x.clock = clock; x.secs = 30; return x; };
+        for (double clk : {1.0, 0.9995, 1.0005}) {
+            ring.init(8192);
+            const InSimRes r = run_in_sim(ring, mk(44100, clk));
+            std::printf("      (44 100 Гц, часы %.4f: провалов %u, щелчков %u, опустошений %u, тон %.2f Гц, подстройка %d ppm)\n", clk, r.gaps, r.clicks, r.under, r.freq, r.adj_end);
+            check(r.gaps == 0 && r.clicks == 0 && r.under == 0, "поток 44 100 Гц: чисто, без провалов и щелчков");
+            check(std::fabs(r.freq - 440.0) < 1.5, "поток 44 100 Гц: тон 440 Гц остался 440 Гц");
+        }
+        ring.init(8192);
+        InSim a22 = mk(22050, 1.0);
+        const InSimRes r22 = run_in_sim(ring, a22);
+        check(r22.gaps == 0 && r22.clicks == 0 && std::fabs(r22.freq - 440.0) < 1.5, "поток 22 050 Гц (растягивается вдвое): чисто, тон на месте");
+        ring.init(8192);
+        InSim a96 = mk(96000, 1.0); a96.tone = 1000.0;
+        const InSimRes r96 = run_in_sim(ring, a96);
+        std::printf("      (96 000 Гц, тон 1000 Гц: провалов %u, щелчков %u, тон на выходе %.2f Гц)\n", r96.gaps, r96.clicks, r96.freq);
+        check(r96.gaps == 0 && r96.under == 0 && std::fabs(r96.freq - 1000.0) < 3.0, "поток 96 000 Гц (сжимается вдвое): чисто, тон 1000 Гц на месте");
+
+        // Частота потока поменялась на ходу (Windows закрыла и открыла поток иначе): читатель начинает заново, не падает и звук возвращается.
+        ring.init(8192);
+        bg::InReader rd;
+        std::vector<float> src(480 * 2), o(128 * 2);
+        auto feed = [&](uint32_t frames) { for (uint32_t i = 0; i < frames; ++i) src[i * 2] = src[i * 2 + 1] = 0.25f; ring.push(src.data(), frames); };
+        rd.open(ring);
+        for (int i = 0; i < 40; ++i) { feed(441); rd.read(ring, o.data(), 128, 44100); }
+        const bool was = rd.src_hz.load() == 44100;
+        for (int i = 0; i < 40; ++i) { feed(480); rd.read(ring, o.data(), 128, 48000); }
+        check(was && rd.src_hz.load() == 48000 && std::fabs(o[0] - 0.25f) < 1e-4f && std::fabs(o[255] - 0.25f) < 1e-4f, "смена частоты потока на ходу: читатель перестроился, звук идёт");
+    }
+
+    // 0.5.3, часть 2: Windows отдаёт и забирает порции по 10 мс (480 кадров). Запас 10 мс (0.5.2) такими порциями опустошался сотнями раз;
+    // теперь цель запаса сама подстраивается. Дрожание до ±14 мс (порция приходит раньше или позже чтения) — как у загруженной Windows.
+    {
+        bg::Ring ring;
+        auto mk = [](double clock, double jit, bool adaptive) {
+            InSim x; x.block = 480; x.burst = 480; x.jitter_ms = jit; x.clock = clock; x.target = bg::kHwTargetFrames; x.adaptive = adaptive; x.secs = 60; x.phase_ms = 0.0; x.sym = true; return x; };
+        for (double jt : {2.0, 5.0, 9.0, 14.0}) {
+            ring.init(8192); const InSimRes f = run_in_sim(ring, mk(1.0, jt, false));
+            ring.init(8192); const InSimRes n = run_in_sim(ring, mk(1.0, jt, true));
+            std::printf("      (порции по 10 мс, опоздание и опережение до ±%.0f мс, 60 с: запас 10 мс фиксированный: опустошений %u, провалов %u; адаптивный: опустошений %u, провалов %u, цель в конце %.1f мс, росла %u раз)\n", jt, f.under, f.gaps, n.under, n.gaps, n.tgt_end / 48.0, n.grown);
+        }
+        for (double clk : {1.0, 0.9995, 1.0005}) {
+            ring.init(8192);
+            const InSimRes f = run_in_sim(ring, mk(clk, 14.0, false));
+            ring.init(8192);
+            const InSimRes n = run_in_sim(ring, mk(clk, 14.0, true));
+            std::printf("      (порции по 10 мс, часы %.4f: запас 10 мс фиксированный: опустошений %u, провалов %u; адаптивный: опустошений %u, провалов %u, цель %.1f мс, запас %.1f мс)\n",
+                        clk, f.under, f.gaps, n.under, n.gaps, n.tgt_end / 48.0, n.fill_end / 48.0);
+            check(f.under > 20, "(проверка самой проверки) фиксированный запас 10 мс при порциях по 10 мс опустошается много раз");
+            check(n.under <= 3 && n.gaps <= 3 && n.clicks <= 3, "адаптивный запас: после подстройки не опустошается (не больше трёх случаев при разгоне)");
+            check(n.tgt_end >= 480 && n.tgt_end <= 2400, "цель запаса выросла только до нужного, не до потолка");
+        }
+        // Спокойный источник: цель остаётся на базе, задержку без нужды не растим.
+        ring.init(8192);
+        InSim calm = mk(1.0, 0.0, true); calm.block = 128; calm.burst = 256; calm.phase_ms = 0.0; calm.secs = 30;
+        const InSimRes c0 = run_in_sim(ring, calm);
+        check(c0.under == 0 && c0.tgt_end == bg::kHwTargetFrames, "спокойный источник: цель осталась на базе 10 мс");
+        // Большой блок читателя поднимает цель сразу: блок 1024 кадра при базе 512 не может работать без роста.
+        ring.init(8192);
+        InSim big = mk(1.0, 1.0, true); big.block = 1024; big.burst = 1024; big.phase_ms = 0.0; big.secs = 20;
+        const InSimRes bg1 = run_in_sim(ring, big);
+        check(bg1.tgt_end >= 1024 + 96 && bg1.gaps <= 2, "блок 1024 кадра: цель не ниже блока плюс 2 мс");
+        // После всплеска дрожания цель возвращается к базе: задержка не остаётся большой навсегда.
+        ring.init(8192);
+        InSim spike = mk(1.0, 0.0, true); spike.block = 128; spike.burst = 480; spike.target = bg::kInTargetFrames; spike.stall_at = 5.0; spike.stall_len = 0.2; spike.secs = 60;
+        const InSimRes sp = run_in_sim(ring, spike);
+        std::printf("      (после паузы 200 мс: цель выросла %u раз, в конце цель %u кадров, база %u)\n", sp.grown, sp.tgt_end, bg::kInTargetFrames);
+        check(sp.grown >= 1 && sp.tgt_end <= bg::kInTargetFrames + 96, "после одиночного сбоя цель запаса снова спускается к базе");
     }
     return bad;
 }
@@ -526,7 +610,7 @@ static int selftest_driver_mixer() {
             check(drv != nullptr, "драйвер подключился к памяти движка");
             check(m.command("set dev a1 " + dev).empty() && m.slot_ok(2), "ведущее устройство A1 открылось");
             m.command("set strip 3 route 3 1");   // V2 («Музыка») -> B1
-            check(m.state_json().find("\"drv\":{\"shm\":1,\"via\":0,\"found\":0,\"alive\":0,\"in\":[0,0,0,0,0,0],\"out\":[0,0,0,0,0,0,0,0],\"diag\":{\"rate\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"starved\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"drops\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"trim\":[0,0,0,0,0,0],\"fill\":[0,0,0,0,0,0],\"under\":[0,0,0,0,0,0],\"adj\":[0,0,0,0,0,0],\"opens\":[0,0,0,0,0,0],\"closes\":[0,0,0,0,0,0]},\"hw\":{\"fill\":[0,0,0,0,0,0,0],\"under\":[0,0,0,0,0,0,0],\"adj\":[0,0,0,0,0,0,0]}}") != std::string::npos, "состояние: драйвера пока нет, диагностика колец нулевая");
+            check(m.state_json().find("\"drv\":{\"shm\":1,\"via\":0,\"found\":0,\"alive\":0,\"in\":[0,0,0,0,0,0],\"out\":[0,0,0,0,0,0,0,0],\"diag\":{\"rate\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"starved\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"drops\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"trim\":[0,0,0,0,0,0],\"fill\":[0,0,0,0,0,0],\"under\":[0,0,0,0,0,0],\"tgt\":[1200,1200,1200,1200,1200,1200],\"adj\":[0,0,0,0,0,0],\"opens\":[0,0,0,0,0,0],\"closes\":[0,0,0,0,0,0]},\"hw\":{\"fill\":[0,0,0,0,0,0,0],\"under\":[0,0,0,0,0,0,0],\"tgt\":[512,512,512,512,512,512,512],\"adj\":[0,0,0,0,0,0,0]}}") != std::string::npos, "состояние: драйвера пока нет, диагностика колец нулевая");
 
             // «Драйвер»: открывает Input 2 и Output 1, пишет постоянный сигнал в Input 2 и читает Output 1.
             bg::ShmRing in2 = drv->in(1), out1 = drv->out(0);
