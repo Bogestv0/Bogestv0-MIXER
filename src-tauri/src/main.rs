@@ -188,6 +188,100 @@ fn settings_save(app: AppHandle, json: String) -> Result<(), String> {
     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
 }
 
+/// Папка, где программа хранит копии звуков саундпада (рядом с настройками, в профиле пользователя).
+fn sounds_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?.join("sounds");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+/// Папки по умолчанию: записи в «Музыка\\Bogestv0», звуки в профиле программы.
+#[tauri::command]
+fn default_dirs(app: AppHandle) -> Result<String, String> {
+    let rec = app
+        .path()
+        .audio_dir()
+        .or_else(|_| app.path().home_dir())
+        .map_err(|e| e.to_string())?
+        .join("Bogestv0");
+    let sounds = sounds_dir(&app)?;
+    Ok(serde_json::json!({ "rec": rec.to_string_lossy(), "sounds": sounds.to_string_lossy() }).to_string())
+}
+
+/// Принимает звук как есть (байты файла, имя в заголовке x-name), кладёт копию в папку звуков и возвращает путь.
+#[tauri::command]
+fn sound_import(app: AppHandle, request: tauri::ipc::Request) -> Result<String, String> {
+    let bytes = match request.body() {
+        tauri::ipc::InvokeBody::Raw(b) => b,
+        _ => return Err("ожидались байты файла".into()),
+    };
+    if bytes.is_empty() || bytes.len() > 64 * 1024 * 1024 {
+        return Err("файл пустой или больше 64 МБ".into());
+    }
+    let raw = request
+        .headers()
+        .get("x-name")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("sound");
+    // Имя приходит закодированным (encodeURIComponent): раскодируем и оставляем только безопасные символы.
+    let mut name = String::new();
+    let rb = raw.as_bytes();
+    let mut dec: Vec<u8> = Vec::new();
+    let mut i = 0;
+    while i < rb.len() {
+        if rb[i] == b'%' && i + 2 < rb.len() {
+            if let Ok(v) = u8::from_str_radix(&raw[i + 1..i + 3], 16) {
+                dec.push(v);
+                i += 3;
+                continue;
+            }
+        }
+        dec.push(rb[i]);
+        i += 1;
+    }
+    for c in String::from_utf8_lossy(&dec).chars() {
+        name.push(if c.is_alphanumeric() || c == '.' || c == ' ' || c == '-' || c == '_' { c } else { '_' });
+    }
+    let name: String = name.chars().take(80).collect();
+    let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+    let path = sounds_dir(&app)?.join(format!("{}-{}", stamp, name));
+    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+/// Удаляет копию звука, только если она лежит в папке звуков программы.
+#[tauri::command]
+fn sound_remove(app: AppHandle, path: String) -> Result<(), String> {
+    let dir = sounds_dir(&app)?;
+    let p = std::path::PathBuf::from(&path);
+    if p.parent() != Some(dir.as_path()) {
+        return Err("это не звук из папки программы".into());
+    }
+    std::fs::remove_file(p).map_err(|e| e.to_string())
+}
+
+/// Показывает файл (или папку) в проводнике.
+#[tauri::command]
+fn reveal_path(path: String) -> Result<(), String> {
+    let p = std::path::PathBuf::from(&path);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let mut c = Command::new("explorer");
+        if p.is_file() {
+            c.raw_arg(format!("/select,\"{}\"", path));
+        } else {
+            c.arg(&path);
+        }
+        c.spawn().map(|_| ()).map_err(|e| e.to_string())
+    }
+    #[cfg(not(windows))]
+    {
+        let dir = if p.is_file() { p.parent().map(|d| d.to_path_buf()).unwrap_or(p.clone()) } else { p.clone() };
+        Command::new("xdg-open").arg(dir).spawn().map(|_| ()).map_err(|e| e.to_string())
+    }
+}
+
 /// Настройки WebSocket в OBS (порт, пароль, включён ли): окно по ним само подключается к OBS, вводить ничего не надо.
 #[tauri::command]
 fn obs_probe() -> String {
@@ -291,7 +385,7 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![engine_send, engine_info, engine_restart, settings_load, settings_save, obs_probe, obs_save_collection, app_prefs, autostart_get, autostart_set])
+        .invoke_handler(tauri::generate_handler![engine_send, engine_info, engine_restart, settings_load, settings_save, obs_probe, obs_save_collection, app_prefs, autostart_get, autostart_set, default_dirs, sound_import, sound_remove, reveal_path])
         .setup(|app| {
             let engine = Engine { stdin: Mutex::new(None), child: Mutex::new(None), boot: AtomicU64::new(0), gen: AtomicU64::new(0) };
             start_engine(app.handle(), &engine);
