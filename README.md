@@ -1,5 +1,7 @@
 # Bogestv0 MIXER — README
 
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+
 Собственный виртуальный аудиомикшер для Windows: свой движок, свои виртуальные устройства, свой интерфейс, обновления через GitHub.
 Voicemeeter Banana (VB-Audio) был только **образцом поведения**. Его код и драйверы мы не берём.
 
