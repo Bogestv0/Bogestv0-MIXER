@@ -36,6 +36,12 @@
     reconnect: true, scope: 'all', loadOnStart: true, autosave: true,
     tray: true, hideOnClose: true, showOnStart: true, onTop: false, lockGui: false, autostart: false
   };
+  // Саундпад и запись (этап 7). pads[i]: name, key (F1.. или буква), file (путь к копии звука в папке программы).
+  // padOut: маска шин, куда играют звуки (A1=1, A2=2, A3=4, B1=8, B2=16). rec: папка, режим и маска шин записи.
+  const PADS = 16;
+  const PAD_DEFAULTS = () => Array.from({ length: PADS }, () => ({ name: '', key: '', file: '' }));
+  const PAD_OUT_DEFAULT = 10;
+  const REC_DEFAULTS = { dir: '', mode: 'separate', mask: 8 };
   const MIC_CMD = { g: 'gain', gate: 'gate', hpf: 'hpf', comp: 'comp', ns: 'ns', amt: 'nsamt' };
 
   const B = (window.Bridge = {
@@ -46,7 +52,7 @@
     meters: null,
     lastError: '',
     settings: null,
-    SLOTS, STRIP_DEFAULTS, MIC_DEFAULTS, NS_AMT, AUDIO_DEFAULTS, APP_DEFAULTS,
+    SLOTS, PADS, STRIP_DEFAULTS, MIC_DEFAULTS, NS_AMT, AUDIO_DEFAULTS, APP_DEFAULTS,
     on(fn) { listeners.add(fn); return () => listeners.delete(fn); }
   });
 
@@ -62,7 +68,11 @@
       devices: null,
       mixer: null,
       audio: { ...AUDIO_DEFAULTS, dly: AUDIO_DEFAULTS.dly.slice() },
-      app: { ...APP_DEFAULTS }
+      app: { ...APP_DEFAULTS },
+      pads: PAD_DEFAULTS(),
+      padOut: PAD_OUT_DEFAULT,
+      padGain: 0,
+      rec: { ...REC_DEFAULTS }
     };
   }
   B.defaults = defaults;
@@ -77,6 +87,7 @@
       case 'state': B.connected = true; B.state = m; emit('state'); scheduleSave(); break;
       case 'devices': B.devices = m; emit('devices'); break;
       case 'm': B.meters = m; emit('meters'); break;
+      case 'recs': B.recs = m; emit('recs'); break;
       case 'err': B.lastError = m.msg; emit('err'); break;
       case 'exit': B.connected = false; B.state = null; B.lastError = 'Движок остановился'; emit('conn'); emit('err'); autoRestart(); break;
     }
@@ -115,6 +126,8 @@
         if (!Array.isArray(B.settings.audio.dly) || B.settings.audio.dly.length !== 3) B.settings.audio.dly = [0, 0, 0];
         B.settings.app = { ...d.app, ...(saved.app || {}) };
         B.settings.strips = d.strips.map((x, i) => ({ ...x, ...((saved.strips || [])[i] || {}) }));
+        B.settings.pads = d.pads.map((x, i) => ({ ...x, ...((saved.pads || [])[i] || {}) }));
+        B.settings.rec = { ...d.rec, ...(saved.rec || {}) };
       } catch (e) { B.settings = defaults(); }
     }
   }
@@ -129,6 +142,8 @@
     };
     if (st.aud) B.settings.audio = { lim: st.aud.lim, dly: st.aud.dly.slice(), buf: st.aud.buf, rc: st.aud.rc };
     B.settings.devices = st.dev;
+    if (st.pads) { B.settings.padOut = st.pads.r; B.settings.padGain = st.pads.g; }
+    if (st.rec) B.settings.rec = { dir: st.rec.dir || B.settings.rec.dir, mode: st.rec.mixed ? 'mixed' : 'separate', mask: st.rec.mask };
     if (st.mic) B.settings.mics = st.mic.map((m) => ({ g: m.g, gate: m.gate, hpf: m.hpf, comp: m.comp, ns: m.ns, amt: m.amt }));
   }
   // «Сохранять изменения сразу» выключено: пишем в файл только по кнопке «Сохранить настройки».
@@ -139,6 +154,8 @@
     saveTimer = setTimeout(B.saveSettings, 600);
   }
   B.scheduleSave = scheduleSave;
+  // Ушли на другой экран раньше, чем сработал таймер: сохраняем сразу, иначе последнее переключение сцены потеряется.
+  window.addEventListener('pagehide', () => { if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; B.saveSettings(); } });
   B.saveSettings = async function () {
     snapshotFromEngine();
     B.unsaved = false;
@@ -272,6 +289,65 @@
   };
   B.micOf = (i) => (B.state && B.state.mic && B.state.mic[i]) || B.settings.mics[i] || MIC_DEFAULTS[i];
   B.sendMic = function (i, m) { Object.keys(MIC_CMD).forEach((k) => { if (m[k] != null) B.send(`set mic ${i} ${MIC_CMD[k]} ${m[k]}`); }); };
+  /* ---------- саундпад и запись (этап 7) ---------- */
+  const padCfg = (i) => B.settings.pads[i];
+  B.padOf = (i) => padCfg(i);
+  // Эти настройки пишем в файл сразу: это выбор человека, а не поток движка.
+  const keep = () => { emit('pads'); B.saveSettings(); };
+  // Копирует звук в папку программы (оригинал можно потом удалить или переместить) и грузит его в кнопку.
+  B.importSound = async function (i, file) {
+    let path = '';
+    const name = file.name || 'sound';
+    if (B.mode === 'tauri') {
+      const buf = await file.arrayBuffer();
+      path = await T.core.invoke('sound_import', buf, { headers: { 'x-name': encodeURIComponent(name) } });
+    } else if (B.mode === 'dev') {
+      const r = await fetch('/sound?name=' + encodeURIComponent(name), { method: 'POST', body: file });
+      if (!r.ok) throw new Error('не удалось сохранить звук');
+      path = await r.text();
+    } else throw new Error('Звуки работают, когда запущен движок.');
+    const old = padCfg(i).file;
+    padCfg(i).file = path;
+    B.send(`set pad ${i} file ${path}`);
+    if (old && old !== path) removeSound(old);
+    keep();
+  };
+  function removeSound(path) { if (B.mode === 'tauri') T.core.invoke('sound_remove', { path }).catch(() => {}); }
+  B.padEdit = function (i, patch) { Object.assign(padCfg(i), patch); keep(); };
+  B.padDelete = function (i) {
+    const old = padCfg(i).file;
+    B.send(`set pad ${i} clear`);
+    B.settings.pads[i] = { name: '', key: '', file: '' };
+    if (old) removeSound(old);
+    keep();
+  };
+  B.padPlay = (i) => B.send(`set pad ${i} play 1`);
+  B.padStop = (i) => B.send(`set pad ${i} play 0`);
+  B.padStopAll = () => B.send('set pad all stop');
+  B.setPadGain = function (db) { B.settings.padGain = db; if (B.state && B.state.pads) B.state.pads.g = db; return B.send(`set pads gain ${db}`); };
+  B.setPadRoute = function (k, on) {
+    const m = B.settings.padOut;
+    B.settings.padOut = on ? (m | (1 << k)) : (m & ~(1 << k));
+    if (B.state && B.state.pads) B.state.pads.r = B.settings.padOut;
+    B.send(`set pads route ${k} ${on ? 1 : 0}`);
+    keep();
+  };
+  B.recSet = function (patch) {
+    Object.assign(B.settings.rec, patch);
+    if ('mode' in patch) B.send(`set rec mode ${patch.mode}`);
+    if ('mask' in patch) B.send(`set rec buses ${patch.mask}`);
+    if ('dir' in patch) B.send(`set rec dir ${patch.dir}`);
+    keep();
+  };
+  B.recStart = () => B.send('rec start');
+  B.recStop = () => B.send('rec stop');
+  B.recList = () => B.send('recs');
+  B.recDelete = (name) => B.send(`rec delete ${name}`);
+  B.reveal = function (path) {
+    if (B.mode === 'tauri') return T.core.invoke('reveal_path', { path }).catch((e) => { B.lastError = String(e); emit('err'); });
+    B.notice('Открыть папку можно в установленном приложении. Файл: ' + path);
+  };
+
   // Ручное переключение маршрута: сцена становится «своими настройками».
   B.setRoute = function (i, k, on) {
     B.settings.active = null;
@@ -296,6 +372,17 @@
     B.send(`set audio buffer ${au.buf}`);
     B.send(`set audio reconnect ${a.reconnect === false ? 0 : (a.scope === 'a1' ? 1 : 2)}`);
   }
+  // Звуки кнопок, куда они играют и настройки записи: возвращаем движку при каждом его запуске.
+  function sendPadsRec() {
+    const s = B.settings;
+    B.send(`set pads gain ${s.padGain || 0}`);
+    for (let k = 0; k < 5; k++) B.send(`set pads route ${k} ${(s.padOut >> k) & 1}`);
+    s.pads.forEach((p, i) => { if (p.file) B.send(`set pad ${i} file ${p.file}`); });
+    if (s.rec.dir) B.send(`set rec dir ${s.rec.dir}`);
+    B.send(`set rec mode ${s.rec.mode === 'mixed' ? 'mixed' : 'separate'}`);
+    B.send(`set rec buses ${s.rec.mask | 0}`);
+    B.send('recs');
+  }
   // Заводские значения микшера (устройства не трогаем).
   function defaultsToEngine() {
     GAIN_DEFAULTS.forEach((g, i) => {
@@ -310,9 +397,12 @@
   // «Сбросить все настройки»: заводское состояние. Устройства остаются назначенными, иначе пропадёт звук.
   B.resetAll = async function () {
     const keepDevices = B.settings.devices;
+    B.settings.pads.forEach((p, i) => { if (p.file) { B.send(`set pad ${i} clear`); removeSound(p.file); } });
     B.settings = defaults();
     B.settings.devices = keepDevices;
+    B.settings.rec.dir = (B.dirs && B.dirs.rec) || '';
     defaultsToEngine();
+    sendPadsRec();
     B.settings.audio = { ...AUDIO_DEFAULTS, dly: AUDIO_DEFAULTS.dly.slice() };
     sendAudio();
     B.settings.mixer = null;
@@ -341,6 +431,8 @@
     B.settings.audio = { ...AUDIO_DEFAULTS, ...(saved.audio || {}) };
     B.settings.app = { ...APP_DEFAULTS, ...(saved.app || {}) };
     B.settings.strips = defaults().strips.map((x, i) => ({ ...x, ...((saved.strips || [])[i] || {}) }));
+    B.settings.pads = defaults().pads.map((x, i) => ({ ...x, ...((saved.pads || [])[i] || {}) }));
+    B.settings.rec = { ...REC_DEFAULTS, ...(saved.rec || {}) };
     B.settings.devices = saved.devices || keepDevices;
     applySaved();
     pushAppPrefs();
@@ -367,6 +459,7 @@
     s.mics.forEach((m, i) => B.sendMic(i, m));
     const mx = s.mixer;
     sendAudio();
+    sendPadsRec();
     if (mx && s.app.loadOnStart === false) {
       // «Загружать настройки при запуске» выключено: устройства вернули, остальное по умолчанию.
       defaultsToEngine();
@@ -410,6 +503,11 @@
       // Автозапуск: истина в реестре (пользователь мог выключить его в диспетчере задач).
       try { B.settings.app.autostart = !!(await T.core.invoke('autostart_get')); } catch (e) { /* оставляем сохранённое */ }
     }
+    try {
+      const raw = B.mode === 'tauri' ? await T.core.invoke('default_dirs') : B.mode === 'dev' ? await (await fetch('/dirs')).text() : '';
+      B.dirs = raw ? JSON.parse(raw) : null;
+      if (B.dirs && !B.settings.rec.dir) B.settings.rec.dir = B.dirs.rec;
+    } catch (e) { /* папку выберет человек */ }
     emit('conn');
     if (B.mode === 'none') return;
     B.send('devices');

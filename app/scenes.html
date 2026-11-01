@@ -35,38 +35,33 @@ html,body{height:100%;overflow:hidden}
   </div>
   <div style="flex:1;min-width:0;box-sizing:border-box;padding:22px 24px 24px;display:flex;flex-direction:column;gap:14px">
     <div style="display:flex;justify-content:space-between;align-items:center">
-      <div><h1 style="margin:0;font:600 22px/1.2 'Unbounded',sans-serif">Сцены</h1><div style="font:400 11.5px 'JetBrains Mono',monospace;color:var(--muted);margin-top:4px">режимы работы · микрофоны · маршруты · устройства</div></div>
+      <div><h1 style="margin:0;font:600 22px/1.2 'Unbounded',sans-serif">Сцены</h1><div style="font:400 11.5px 'JetBrains Mono',monospace;color:var(--muted);margin-top:4px">набор маршрутов «кто куда играет» одним нажатием</div></div>
       <div style="display:flex;align-items:center;gap:10px;padding:5px 14px 5px 5px;border-radius:99px;background:var(--surface);border:1px solid var(--line);font-weight:600;font-size:14px"><span style="width:30px;height:30px;border-radius:50%;background:var(--signal-soft);color:var(--signal);display:flex;align-items:center;justify-content:center;font-size:13px">B</span>Bogestv0</div>
     </div>
     <div style="flex:1;min-height:0;display:flex;gap:14px">
-      <div style="flex:0 0 330px;display:flex;flex-direction:column;gap:10px">
-        <h2 style="margin:0;font:600 12px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Мои сцены</h2>
+      <div style="flex:0 0 300px;overflow:auto;display:flex;flex-direction:column;gap:10px">
         <sc-for list="{{scenes}}" as="sc">
-          <button aria-pressed="{{sc.on}}" style="text-align:left;padding:14px 16px;border-radius:16px;display:flex;flex-direction:column;gap:3px;{{sc.style}}"><span style="font:600 16px 'Onest',sans-serif">{{sc.name}}</span><span style="font:400 12.5px/1.4 'Onest',sans-serif;opacity:.8">{{sc.sub}}</span></button>
+          <button data-sc="{{sc.id}}" aria-pressed="{{sc.sel}}" style="text-align:left;padding:14px 16px;border-radius:16px;display:flex;flex-direction:column;gap:3px;{{sc.style}}"><span style="display:flex;justify-content:space-between;gap:8px"><span style="font:600 16px 'Onest',sans-serif">{{sc.name}}</span><span style="font:500 11.5px 'JetBrains Mono',monospace;{{sc.badge}}">активна</span></span><span style="font:400 12.5px/1.4 'Onest',sans-serif;color:var(--muted)">{{sc.desc}}</span></button>
         </sc-for>
-        <button style="min-height:44px;padding:0 18px;border-radius:12px;font:500 14px 'Onest',sans-serif;background:none;color:var(--signal);border:1px dashed var(--signal)">+ Новая сцена</button>
+        <button data-sact="new" style="min-height:44px;padding:0 18px;border-radius:12px;font:500 14px 'Onest',sans-serif;background:var(--surface);color:var(--fg);border:1px solid var(--line);background:none;color:var(--signal);border:1px dashed var(--signal)">+ Новая сцена</button>
       </div>
-      <div style="flex:1;min-width:0;background:var(--surface);border-radius:20px;padding:20px;box-shadow:0 1px 0 var(--line);display:flex;flex-direction:column;gap:16px">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
-          <div><div style="font:600 20px/1.2 'Unbounded',sans-serif">Играю и стримлю</div><div style="font-size:13px;color:var(--muted);margin-top:3px">Игры и музыка в наушники и на стрим, Discord только в наушники.</div></div>
-          <div style="display:flex;gap:8px"><button style="min-height:44px;padding:0 18px;border-radius:12px;font:500 14px 'Onest',sans-serif;background:var(--surface);color:var(--fg);border:1px solid var(--line)">Дублировать</button><button style="min-height:44px;padding:0 18px;border-radius:12px;font:500 14px 'Onest',sans-serif;background:var(--signal);color:var(--signal-ink);border:1px solid var(--signal)">Применить</button></div>
+      <div style="flex:1;min-width:0;overflow:auto;background:var(--surface);border-radius:20px;padding:20px;box-shadow:0 1px 0 var(--line);display:flex;flex-direction:column;gap:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+          <div style="min-width:0"><div style="font:600 20px/1.2 'Unbounded',sans-serif">{{cur.name}}</div><div style="font-size:13px;color:var(--muted);margin-top:3px">{{cur.desc}}</div></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap"><button data-sact="edit" style="min-height:44px;padding:0 18px;border-radius:12px;font:500 14px 'Onest',sans-serif;background:var(--surface);color:var(--fg);border:1px solid var(--line)">Переименовать</button><button data-sact="dup" style="min-height:44px;padding:0 18px;border-radius:12px;font:500 14px 'Onest',sans-serif;background:var(--surface);color:var(--fg);border:1px solid var(--line)">Дублировать</button><button data-sact="del" style="min-height:44px;padding:0 18px;border-radius:12px;font:500 14px 'Onest',sans-serif;background:var(--surface);color:var(--fg);border:1px solid var(--line);color:var(--bad);border-color:var(--bad)">Удалить</button><button data-sact="apply" style="min-height:44px;padding:0 18px;border-radius:12px;font:500 14px 'Onest',sans-serif;background:var(--surface);color:var(--fg);border:1px solid var(--line);{{applyStyle}}">{{applyText}}</button></div>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           <h2 style="margin:0;font:600 12px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Микрофоны</h2>
-          <sc-for list="{{mics}}" as="m"><div style="display:flex;justify-content:space-between;padding:10px 14px;border-radius:12px;background:var(--surface-2)"><span style="font-weight:600">{{m.name}}</span><span style="font:500 13px 'JetBrains Mono',monospace;color:var(--muted)">{{m.text}}</span></div></sc-for>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 14px;border-radius:12px;background:var(--surface-2);flex-wrap:wrap"><span style="font-size:14px">{{micText}}</span><button data-sact="mics" style="min-height:36px;padding:0 14px;border-radius:10px;font:500 13px 'Onest',sans-serif;background:var(--surface);color:var(--fg);border:1px solid var(--line)">{{micBtn}}</button></div>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">
           <h2 style="margin:0;font:600 12px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Куда идёт звук</h2>
           <div style="display:grid;grid-template-columns:160px repeat(5,1fr);gap:6px 0;align-items:center;font:500 13px 'JetBrains Mono',monospace;color:var(--muted);text-align:center"><span></span><span>A1</span><span>A2</span><span>A3</span><span>B1</span><span>B2</span></div>
           <sc-for list="{{rows}}" as="r">
-            <div style="display:grid;grid-template-columns:160px repeat(5,1fr);align-items:center;justify-items:center;padding:5px 0;border-top:1px solid var(--line)"><span style="justify-self:start;font-weight:500">{{r.name}}</span><span style="width:20px;height:20px;border-radius:50%;{{r.c0}}"></span><span style="width:20px;height:20px;border-radius:50%;{{r.c1}}"></span><span style="width:20px;height:20px;border-radius:50%;{{r.c2}}"></span><span style="width:20px;height:20px;border-radius:50%;{{r.c3}}"></span><span style="width:20px;height:20px;border-radius:50%;{{r.c4}}"></span></div>
+            <div style="display:grid;grid-template-columns:160px repeat(5,1fr);align-items:center;justify-items:center;padding:5px 0;border-top:1px solid var(--line)"><span style="justify-self:start;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px">{{r.name}}</span>
+              <button data-cell="{{r.i}}:0" role="checkbox" aria-checked="{{r.c0}}" aria-label="{{r.name}} на A1" style="{{r.s0}}"></button><button data-cell="{{r.i}}:1" role="checkbox" aria-checked="{{r.c1}}" aria-label="{{r.name}} на A2" style="{{r.s1}}"></button><button data-cell="{{r.i}}:2" role="checkbox" aria-checked="{{r.c2}}" aria-label="{{r.name}} на A3" style="{{r.s2}}"></button><button data-cell="{{r.i}}:3" role="checkbox" aria-checked="{{r.c3}}" aria-label="{{r.name}} на B1" style="{{r.s3}}"></button><button data-cell="{{r.i}}:4" role="checkbox" aria-checked="{{r.c4}}" aria-label="{{r.name}} на B2" style="{{r.s4}}"></button></div>
           </sc-for>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:8px">
-          <h2 style="margin:0;font:600 12px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Устройства</h2>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <sc-for list="{{devs}}" as="d"><div style="display:flex;gap:10px;align-items:center;padding:9px 12px;border-radius:12px;background:var(--surface-2)"><span style="font:500 13px 'JetBrains Mono',monospace;padding:2px 9px;border-radius:99px;background:var(--signal-soft);color:var(--signal)">{{d.tag}}</span><span style="font-size:13.5px">{{d.name}}</span></div></sc-for>
-          </div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:4px">Фейдеры, Mute и устройства сцена не трогает, только маршруты (и микрофоны, если вы их запомнили).</div>
         </div>
       </div>
     </div>
@@ -77,21 +72,37 @@ html,body{height:100%;overflow:hidden}
 <script>
 class Component extends DCLogic {
   renderVals() {
-    const on = 'background:var(--signal);color:var(--signal-ink);border:1px solid var(--signal)';
-    const off = 'background:var(--surface);color:var(--fg);border:1px solid var(--line)';
-    const dot = (v) => v ? 'background:var(--signal)' : 'background:var(--surface-2);border:1px solid var(--line)';
-    const navDefs = [['Микшер','M6 4v16M12 4v16M18 4v16','main.html'],['Выходы','M4 9v6h4l5 4V5L8 9H4zM16.5 8.5a5 5 0 0 1 0 7','#'],['Сцены','M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z','scenes.html'],['Эффекты','M3 12h3l2-6 4 12 3-9 2 3h4','effects.html'],['Запись','M12 4a8 8 0 1 0 0 16a8 8 0 1 0 0-16z','record.html'],['Устройства','M7 3h10a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3zM12 11a3 3 0 1 0 0 6a3 3 0 1 0 0-6z','#'],['Настройки','M12 2v3M12 19v3M2 12h3M19 12h3M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6z','settings.html']];
+    const B = window.Bridge, S = B.settings;
+    const navDefs = [['Микшер','M6 4v16M12 4v16M18 4v16','main.html'],['Выходы','M4 9v6h4l5 4V5L8 9H4zM16.5 8.5a5 5 0 0 1 0 7','outputs.html'],['Сцены','M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z','scenes.html'],['Эффекты','M3 12h3l2-6 4 12 3-9 2 3h4','effects.html'],['Запись','M12 4a8 8 0 1 0 0 16a8 8 0 1 0 0-16z','record.html'],['Устройства','M7 3h10a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3zM12 11a3 3 0 1 0 0 6a3 3 0 1 0 0-6z','devices.html'],['Настройки','M12 2v3M12 19v3M2 12h3M19 12h3M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6z','settings.html']];
     const nav = navDefs.map((n) => ({ name: n[0], d: n[1], href: n[2], style: n[0] === 'Сцены' ? 'background:var(--signal-soft);color:var(--signal);font-weight:600' : 'background:none;color:var(--muted)' }));
-    const scenes = [['Играю и стримлю','Игры и музыка на стрим и в наушники',1],['Звонок','Всё в наушники, микрофоны только на звонки',0],['Всё в колонки','Все дорожки в колонки',0]].map((s) => ({ name: s[0], sub: s[1], on: !!s[2], style: s[2] ? 'background:var(--signal-soft);color:var(--signal);border:1px solid var(--signal);box-shadow:0 0 0 1px var(--signal)' : 'background:var(--surface);color:var(--fg);border:1px solid var(--line)' }));
-    const mics = [{ name: 'Микрофон 1', text: 'шумодав: сильное · гейт 35 %' }, { name: 'Микрофон 2', text: 'шумодав: мягкое · гейт 40 %' }];
-    const M = [['Микрофон 1',[0,0,0,1,1]],['Микрофон 2',[0,0,0,1,1]],['Игры',[0,1,0,1,0]],['Музыка',[0,1,0,1,0]],['Discord',[0,1,0,0,0]],['Браузер',[0,1,0,0,0]]];
-    const rows = M.map((m) => ({ name: m[0], c0: dot(m[1][0]), c1: dot(m[1][1]), c2: dot(m[1][2]), c3: dot(m[1][3]), c4: dot(m[1][4]) }));
-    const devs = [['HW1','Микрофон (High Definition Audio)'],['HW2','USB Microphone'],['A1','Динамики (Realtek)'],['A2','USB PnP Audio Device']].map((d) => ({ tag: d[0], name: d[1] }));
-    return { nav, scenes, mics, rows, devs };
+    const selId = window.__sceneSel && S.scenes.some((x) => x.id === window.__sceneSel) ? window.__sceneSel : (S.active && S.scenes.some((x) => x.id === S.active) ? S.active : S.scenes[0].id);
+    window.__sceneSel = selId;
+    const cur = S.scenes.find((x) => x.id === selId);
+    const scenes = S.scenes.map((x) => {
+      const sel = x.id === selId;
+      return { id: x.id, name: x.name, desc: x.desc || '', sel,
+        badge: x.id === S.active ? 'color:var(--ok)' : 'display:none',
+        style: sel ? 'background:var(--signal-soft);color:var(--fg);border:1px solid var(--signal);box-shadow:0 0 0 1px var(--signal)' : 'background:var(--surface);color:var(--fg);border:1px solid var(--line)' };
+    });
+    const cell = (v) => 'width:24px;height:24px;border-radius:7px;padding:0;cursor:pointer;' + (v ? 'background:var(--signal);border:1px solid var(--signal)' : 'background:var(--surface-2);border:1px solid var(--line)');
+    const rows = S.strips.map((s, i) => {
+      const m = cur.routes[i] || 0, r = { i, name: s.name || B.STRIP_DEFAULTS[i].name };
+      for (let k = 0; k < 5; k++) { r['c' + k] = !!((m >> k) & 1); r['s' + k] = cell((m >> k) & 1); }
+      return r;
+    });
+    const isActive = cur.id === S.active;
+    const mic = (m) => 'шумодав ' + ['выкл', 'мягкий', 'сильный', 'максимум'][m.ns] + ', усиление ' + m.g + ' дБ';
+    return {
+      nav, scenes, rows, cur: { name: cur.name, desc: cur.desc || 'Без описания' },
+      applyText: isActive ? 'Сейчас активна' : 'Применить', applyStyle: isActive ? 'opacity:.6;cursor:default' : 'background:var(--signal);color:var(--signal-ink);border-color:var(--signal)',
+      micText: Array.isArray(cur.mics) ? 'Сцена запоминает: Микрофон 1 — ' + mic(cur.mics[0] || B.micOf(0)) + '; Микрофон 2 — ' + mic(cur.mics[1] || B.micOf(1)) : 'Настройки микрофонов не меняются при переключении.',
+      micBtn: Array.isArray(cur.mics) ? 'Не менять микрофоны' : 'Запомнить текущие микрофоны'
+    };
   }
 }
 </script>
 <script>DC.mount(Component);</script>
 <script src="app.js"></script>
+<script src="scenes.js"></script>
 </body>
 </html>

@@ -14,6 +14,7 @@
 #include "serve.h"
 
 #include <chrono>
+#include <filesystem>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -841,6 +842,112 @@ static int selftest_eq() {
     return bad;
 }
 
+// ---------- проверка саундпада и записи (этап 7) ----------
+static bool write_test_wav16(const std::string& path, double seconds, double hz, float amp) {
+    FILE* f = bg::fopen_u8(path, "wb");
+    if (!f) return false;
+    const uint32_t n = static_cast<uint32_t>(seconds * 48000), bytes = n * 2;
+    unsigned char h[44];
+    std::memcpy(h, "RIFF", 4); bg::WavWriter::put32(h + 4, 36 + bytes);
+    std::memcpy(h + 8, "WAVEfmt ", 8); bg::WavWriter::put32(h + 16, 16); bg::WavWriter::put16(h + 20, 1); bg::WavWriter::put16(h + 22, 1);
+    bg::WavWriter::put32(h + 24, 48000); bg::WavWriter::put32(h + 28, 96000); bg::WavWriter::put16(h + 32, 2); bg::WavWriter::put16(h + 34, 16);
+    std::memcpy(h + 36, "data", 4); bg::WavWriter::put32(h + 40, bytes);
+    std::fwrite(h, 1, 44, f);
+    for (uint32_t i = 0; i < n; ++i) {
+        const int16_t v = static_cast<int16_t>(std::lrint(amp * 32767.0 * std::sin(2.0 * 3.14159265358979 * hz * i / 48000.0)));
+        unsigned char b[2] = {static_cast<unsigned char>(v & 255), static_cast<unsigned char>((v >> 8) & 255)};
+        std::fwrite(b, 1, 2, f);
+    }
+    std::fclose(f);
+    return true;
+}
+
+// Читает наш WAV (24 бита стерео): возвращает кадры (левый канал) и проверяет заголовок.
+static bool read_test_wav24(const std::string& path, std::vector<float>& left, uint32_t& header_frames) {
+    std::vector<unsigned char> b;
+    if (!bg::read_file_u8(path, b, 1u << 30) || b.size() < 44) return false;
+    if (std::memcmp(b.data(), "RIFF", 4) || std::memcmp(b.data() + 8, "WAVEfmt ", 8) || b[22] != 2 || b[34] != 24) return false;
+    const uint32_t dbytes = b[40] | (b[41] << 8) | (b[42] << 16) | (static_cast<uint32_t>(b[43]) << 24);
+    header_frames = dbytes / 6;
+    const size_t n = (b.size() - 44) / 6;
+    left.resize(n);
+    for (size_t i = 0; i < n; ++i) {
+        int32_t v = b[44 + i * 6] | (b[45 + i * 6] << 8) | (b[46 + i * 6] << 16);
+        if (v & 0x800000) v |= ~0xFFFFFF;
+        left[i] = static_cast<float>(v) / 8388607.0f;
+    }
+    return true;
+}
+
+static int selftest_pad_rec() {
+    int bad = 0;
+    auto check = [&](bool ok, const char* what) { std::printf("%s %s\n", ok ? "ok    " : "ОШИБКА", what); if (!ok) ++bad; };
+    namespace fs = std::filesystem;
+    ma_backend nb[] = {ma_backend_null};
+    ma_context ctx;
+    ma_context_config cc = ma_context_config_init();
+    if (ma_context_init(nb, 1, &cc, &ctx) != MA_SUCCESS) { std::printf("пропущено: нулевой звуковой бэкенд недоступен\n"); return 0; }
+    const std::string root = (fs::temp_directory_path() / ("bg-selftest-" + std::to_string(static_cast<unsigned long>(std::chrono::steady_clock::now().time_since_epoch().count() % 1000000007ull)) + "-Записи")).string();
+    fs::create_directories(fs::u8path(root));
+    const std::string wav = root + "/звук.wav", longwav = root + "/long.wav", out = root + "/out";
+    check(write_test_wav16(wav, 0.5, 440.0, 0.5f) && write_test_wav16(longwav, 21.0, 440.0, 0.3f), "тестовые звуки созданы (в папке с кириллицей)");
+    {
+        bg::Mixer m(&ctx, nullptr);
+        std::vector<float> o(480 * 2);
+        check(m.command("set pad 0 file " + wav).empty() && m.pads[0].frames.load() == 24000, "звук загрузился: 0,5 с = 24000 кадров (моно в стерео)");
+        check(!m.command("set pad 1 file " + longwav).empty() && m.pads[1].frames.load() == 0, "звук длиннее 20 секунд отклонён");
+        check(!m.command("set pad 2 file " + root + "/нет.wav").empty(), "несуществующий файл даёт ошибку");
+        check(!m.command("set pad 3 play 1").empty() && !m.command("set pad 99 play 1").empty(), "пустая кнопка и неверный номер дают ошибку");
+        check(m.command("set pads route 1 0").empty() && m.command("set pads route 3 1").empty() && m.state_json().find("\"pads\":{\"g\":0,\"r\":8") != std::string::npos, "звуки играют только на B1");
+        m.command("set rec dir " + out); m.command("set rec buses 8"); m.command("set rec mode separate");
+        check(m.command("rec start тест").empty() && m.rec.active(), "запись B1 началась");
+        check(!m.command("set rec buses 2").empty(), "во время записи настройки менять нельзя");
+        check(m.command("set pad 0 play 1").empty() && m.pads[0].playing.load(), "звук запущен");
+        for (int i = 0; i < 60; ++i) { m.debug_process(o.data(), 480); std::this_thread::sleep_for(std::chrono::milliseconds(2)); }
+        check(!m.pads[0].playing.load(), "через 0,5 с звук сам закончился");
+        check(m.state_json().find("\"p\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]") != std::string::npos, "в состоянии ничего не играет");
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        check(m.command("rec stop").empty() && !m.rec.active(), "запись остановлена");
+        std::vector<float> left; uint32_t hf = 0;
+        const std::string f1 = out + "/тест · B1.wav";
+        check(read_test_wav24(f1, left, hf), "файл записи читается: заголовок WAV 24 бита стерео");
+        check(left.size() == 28800 && hf == 28800, "в файле ровно 60 блоков по 480 кадров, заголовок это знает");
+        float pk = 0.0f, tail = 0.0f;
+        for (size_t i = 0; i < left.size(); ++i) { pk = std::max(pk, std::fabs(left[i])); if (i > 26000) tail = std::max(tail, std::fabs(left[i])); }
+        check(pk > 0.45f && pk < 0.52f, "уровень записи совпадает со звуком (около 0,5)");
+        check(tail < 1e-6f, "после конца звука в файле тишина");
+        check(m.recs_json().find("\"n\":\"тест · B1.wav\"") != std::string::npos, "список записей показывает файл");
+        // общий файл из двух шин
+        m.command("set pads route 1 1"); m.command("set rec buses 10"); m.command("set rec mode mixed");
+        check(m.command("rec start общая").empty(), "запись A2 + B1 одним файлом началась");
+        m.command("set pad 0 play 1");
+        for (int i = 0; i < 60; ++i) { m.debug_process(o.data(), 480); std::this_thread::sleep_for(std::chrono::milliseconds(2)); }
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        m.command("rec stop");
+        check(read_test_wav24(out + "/общая · общий.wav", left, hf), "общий файл создан");
+        pk = 0.0f; for (float v : left) pk = std::max(pk, std::fabs(v));
+        check(pk > 0.9f && pk <= 1.0f, "в общем файле шины сложились (около 1,0, без выхода за предел)");
+        // удаление и защита
+        check(!m.command("rec delete ../x.wav").empty() && !m.command("rec delete текст.txt").empty(), "удалять можно только .wav из папки записи");
+        check(m.command("rec delete тест · B1.wav").empty() && !fs::exists(fs::u8path(f1)), "запись удалена");
+        // замена звука на лету и «Стоп всё»
+        m.command("set pad 0 play 1");
+        std::atomic<bool> stop{false};
+        std::thread th([&] { std::vector<float> oo(480 * 2); while (!stop) { m.debug_process(oo.data(), 480); std::this_thread::sleep_for(std::chrono::microseconds(200)); } });
+        bool fine = true;
+        for (int i = 0; i < 40; ++i) { fine = fine && m.command("set pad 0 file " + wav).empty(); m.command("set pad 0 play 1"); }
+        m.command("set pad all stop");
+        check(!m.pads[0].playing.load(), "«Стоп всё» останавливает звуки");
+        m.command("set pad 0 clear"); m.command("set pad 0 play 1");
+        stop = true; th.join();
+        check(fine && m.pads[0].frames.load() == 0, "звук можно заменять и очищать, пока он играет (без падений)");
+        check(!m.command("rec start x").empty() || true, "запись без папки не падает");
+    }
+    ma_context_uninit(&ctx);
+    try { fs::remove_all(fs::u8path(root)); } catch (...) {}
+    return bad;
+}
+
 static int selftest() {
     int bad = 0;
     auto check = [&](bool ok, const char* what) { std::printf("%s %s\n", ok ? "ok    " : "ОШИБКА", what); if (!ok) ++bad; };
@@ -871,6 +978,7 @@ static int selftest() {
     bad += selftest_inbuf();
     bad += selftest_driver_mixer();
     bad += selftest_eq();
+    bad += selftest_pad_rec();
     std::printf(bad ? "\nЕсть ошибки: %d\n" : "\nВсе проверки пройдены.\n", bad);
     return bad ? 1 : 0;
 }

@@ -35,24 +35,26 @@ html,body{height:100%;overflow:hidden}
   </div>
   <div style="flex:1;min-width:0;box-sizing:border-box;padding:22px 24px 24px;display:flex;flex-direction:column;gap:14px">
     <div style="display:flex;justify-content:space-between;align-items:center">
-      <div><h1 style="margin:0;font:600 22px/1.2 'Unbounded',sans-serif">Эффекты</h1><div style="font:400 11.5px 'JetBrains Mono',monospace;color:var(--muted);margin-top:4px">звуки на кнопках · играют на B1, B2 или в наушники</div></div>
+      <div><h1 style="margin:0;font:600 22px/1.2 'Unbounded',sans-serif">Эффекты</h1><div style="font:400 11.5px 'JetBrains Mono',monospace;color:var(--muted);margin-top:4px">звуки на кнопках · играют на выбранные выходы · клавиши F1–F12 работают, когда окно в фокусе</div></div>
       <div style="display:flex;align-items:center;gap:10px;padding:5px 14px 5px 5px;border-radius:99px;background:var(--surface);border:1px solid var(--line);font-weight:600;font-size:14px"><span style="width:30px;height:30px;border-radius:50%;background:var(--signal-soft);color:var(--signal);display:flex;align-items:center;justify-content:center;font-size:13px">B</span>Bogestv0</div>
     </div>
-    <div style="background:var(--surface);border-radius:20px;padding:20px;box-shadow:0 1px 0 var(--line);display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 20px">
-      <div style="display:flex;align-items:center;gap:12px"><h2 style="margin:0;font:600 12px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Играть на</h2>
-        <sc-for list="{{outs}}" as="o"><button aria-pressed="{{o.on}}" style="min-height:44px;padding:0 18px;border-radius:12px;font:500 14px 'Onest',sans-serif;{{o.style}}">{{o.name}}</button></sc-for>
+    <div style="background:var(--surface);border-radius:20px;box-shadow:0 1px 0 var(--line);display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 20px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h2 style="margin:0;font:600 12px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Играть на</h2>
+        <sc-for list="{{outs}}" as="o"><button data-prout="{{o.k}}" aria-pressed="{{o.on}}" style="min-height:44px;padding:0 16px;border-radius:12px;font:500 14px 'Onest',sans-serif;{{o.style}}">{{o.name}}</button></sc-for>
       </div>
-      <div style="display:flex;align-items:center;gap:14px"><span style="font-size:13px;color:var(--muted)">Громкость</span><div style="position:relative;width:180px;height:6px;border-radius:3px;background:var(--line)"><div style="width:72%;height:100%;border-radius:3px;background:var(--signal)"></div><div style="position:absolute;left:calc(72% - 11px);top:-8px;width:22px;height:22px;border-radius:50%;background:var(--surface);border:2px solid var(--signal);box-sizing:border-box"></div></div><span style="font:500 13px 'JetBrains Mono',monospace;color:var(--signal)">−4 дБ</span>
-        <button style="min-height:44px;padding:0 18px;border-radius:12px;font:500 14px 'Onest',sans-serif;background:var(--surface);color:var(--bad);border:1px solid var(--bad)">Стоп всё</button></div>
+      <div style="display:flex;align-items:center;gap:14px"><span style="font-size:13px;color:var(--muted)">Громкость</span>
+        <div data-pgain role="slider" tabindex="0" aria-label="Громкость звуков" aria-valuemin="-48" aria-valuemax="12" aria-valuenow="{{gain}}" style="position:relative;width:180px;height:6px;border-radius:3px;background:var(--line);touch-action:none;cursor:pointer;margin:0 11px"><div data-pgfill style="width:{{gpct}}%;height:100%;border-radius:3px;background:var(--signal);pointer-events:none"></div><div data-pgcap style="position:absolute;left:calc({{gpct}}% - 11px);top:-8px;width:22px;height:22px;border-radius:50%;background:var(--surface);border:2px solid var(--signal);box-sizing:border-box;pointer-events:none"></div></div>
+        <span data-pgtxt style="font:500 13px 'JetBrains Mono',monospace;color:var(--signal);min-width:64px">{{gtxt}}</span>
+        <button data-act="pstop" style="min-height:44px;padding:0 18px;border-radius:12px;font:500 14px 'Onest',sans-serif;background:var(--surface);color:var(--bad);border:1px solid var(--bad)">Стоп всё</button></div>
     </div>
-    <div style="flex:1;min-height:0;display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:1fr;gap:12px">
+    <div style="flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:124px;gap:12px;align-content:start">
       <sc-for list="{{pads}}" as="p">
-        <button style="text-align:left;padding:14px 16px;border-radius:18px;display:flex;flex-direction:column;justify-content:space-between;{{p.style}}">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;width:100%"><span style="font:600 16px/1.25 'Onest',sans-serif">{{p.name}}</span><span style="font:500 13px 'JetBrains Mono',monospace;font-size:11.5px;padding:2px 8px;border-radius:8px;background:var(--surface-2);color:var(--muted)">{{p.key}}</span></div>
-          <div style="width:100%"><div style="font:500 13px 'JetBrains Mono',monospace;font-size:12px;color:var(--muted);margin-bottom:6px">{{p.len}}</div><div style="height:5px;border-radius:3px;background:var(--line);overflow:hidden"><div style="width:{{p.pct}}%;height:100%;background:var(--signal)"></div></div></div>
-        </button>
+        <div data-pad="{{p.i}}" role="button" tabindex="0" aria-label="{{p.aria}}" style="cursor:pointer;text-align:left;box-sizing:border-box;padding:14px 16px;border-radius:18px;display:flex;flex-direction:column;justify-content:space-between;gap:8px;{{p.style}}">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;width:100%;gap:8px"><span style="font:600 16px/1.25 'Onest',sans-serif;overflow-wrap:anywhere">{{p.name}}</span><span style="display:flex;gap:6px;align-items:center;flex-shrink:0"><span style="font:500 11.5px 'JetBrains Mono',monospace;padding:2px 8px;border-radius:8px;background:var(--surface-2);color:var(--muted)">{{p.key}}</span><button data-padedit="{{p.i}}" aria-label="Изменить звук" title="Изменить" style="width:28px;height:28px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--muted);display:inline-flex;align-items:center;justify-content:center;padding:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM13 7l4 4"/></svg></button></span></div>
+          <div style="width:100%"><div data-plen="{{p.i}}" style="font:500 12px 'JetBrains Mono',monospace;color:var(--muted);margin-bottom:6px">{{p.len}}</div><div style="height:5px;border-radius:3px;background:var(--line);overflow:hidden"><div data-pbar="{{p.i}}" style="width:0%;height:100%;background:var(--signal)"></div></div></div>
+        </div>
       </sc-for>
-      <button style="padding:14px;border-radius:18px;background:none;color:var(--signal);border:1px dashed var(--signal);font:500 15px 'Onest',sans-serif">+ Добавить звук</button>
+      <button data-act="padadd" style="padding:14px;border-radius:18px;background:none;color:var(--signal);border:1px dashed var(--signal);font:500 15px 'Onest',sans-serif;{{addStyle}}">{{addText}}</button>
     </div>
   </div>
 </div>
@@ -61,19 +63,43 @@ html,body{height:100%;overflow:hidden}
 <script>
 class Component extends DCLogic {
   renderVals() {
+    const B = window.Bridge;
+    const st = B.state, S = B.settings;
     const on = 'background:var(--signal);color:var(--signal-ink);border:1px solid var(--signal)';
     const off = 'background:var(--surface);color:var(--fg);border:1px solid var(--line)';
-    const dot = (v) => v ? 'background:var(--signal)' : 'background:var(--surface-2);border:1px solid var(--line)';
-    const navDefs = [['Микшер','M6 4v16M12 4v16M18 4v16','main.html'],['Выходы','M4 9v6h4l5 4V5L8 9H4zM16.5 8.5a5 5 0 0 1 0 7','#'],['Сцены','M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z','scenes.html'],['Эффекты','M3 12h3l2-6 4 12 3-9 2 3h4','effects.html'],['Запись','M12 4a8 8 0 1 0 0 16a8 8 0 1 0 0-16z','record.html'],['Устройства','M7 3h10a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3zM12 11a3 3 0 1 0 0 6a3 3 0 1 0 0-6z','#'],['Настройки','M12 2v3M12 19v3M2 12h3M19 12h3M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6z','settings.html']];
+    const navDefs = [['Микшер','M6 4v16M12 4v16M18 4v16','main.html'],['Выходы','M4 9v6h4l5 4V5L8 9H4zM16.5 8.5a5 5 0 0 1 0 7','outputs.html'],['Сцены','M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z','scenes.html'],['Эффекты','M3 12h3l2-6 4 12 3-9 2 3h4','effects.html'],['Запись','M12 4a8 8 0 1 0 0 16a8 8 0 1 0 0-16z','record.html'],['Устройства','M7 3h10a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3zM12 11a3 3 0 1 0 0 6a3 3 0 1 0 0-6z','devices.html'],['Настройки','M12 2v3M12 19v3M2 12h3M19 12h3M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6z','settings.html']];
     const nav = navDefs.map((n) => ({ name: n[0], d: n[1], href: n[2], style: n[0] === 'Эффекты' ? 'background:var(--signal-soft);color:var(--signal);font-weight:600' : 'background:none;color:var(--muted)' }));
-    const outs = [['B1 · Для стрима',1],['B2 · Для звонков',0],['A2 · Мне в наушники',1]].map((o) => ({ name: o[0], on: !!o[1], style: o[1] ? on : off }));
-    const P = [['Аплодисменты','F1','0:04',0],['Барабанная дробь','F2','0:03',0],['Смех','F3','0:02',0],['Сирена','F4','0:05',62],['Вау','F5','0:01',0],['Дзынь','F6','0:01',0],['Фейл','F7','0:03',0],['Победа','F8','0:06',0],['Ой','F9','0:01',0],['Тревога','F10','0:08',0],['Тишина в зале','F11','0:04',0]];
-    const pads = P.map((p) => ({ name: p[0], key: p[1], len: p[3] ? 'играет · ' + p[2] : p[2], pct: p[3], style: p[3] ? 'background:var(--signal-soft);color:var(--fg);border:1px solid var(--signal);box-shadow:0 0 0 1px var(--signal)' : 'background:var(--surface);color:var(--fg);border:1px solid var(--line)' }));
-    return { nav, outs, pads };
+    const mask = st && st.pads ? st.pads.r : S.padOut;
+    const outs = [['A1 · Колонки', 0], ['A2 · Наушники', 1], ['A3 · Запасной', 2], ['B1 · Для стрима', 3], ['B2 · Для звонков', 4]].map((o) => {
+      const v = !!((mask >> o[1]) & 1);
+      return { k: o[1], name: o[0], on: v, style: v ? on : off };
+    });
+    const g = st && st.pads ? st.pads.g : S.padGain;
+    const lens = st && st.pads ? st.pads.l : [];
+    const play = st && st.pads ? st.pads.p : [];
+    const fmtLen = (fr) => (fr / 48000).toFixed(1).replace('.', ',') + ' с';
+    const pads = [];
+    S.pads.forEach((p, i) => {
+      if (!p.file) return;
+      const loaded = lens[i] > 0;
+      const playing = !!play[i];
+      pads.push({
+        i, name: p.name || 'Звук ' + (i + 1), key: p.key || '—',
+        aria: (p.name || 'Звук ' + (i + 1)) + (p.key ? ', клавиша ' + p.key : ''),
+        len: !st ? 'нет связи с движком' : !loaded ? 'не загрузился' : playing ? 'играет · ' + fmtLen(lens[i]) : fmtLen(lens[i]),
+        style: playing ? 'background:var(--signal-soft);color:var(--fg);border:1px solid var(--signal);box-shadow:0 0 0 1px var(--signal)' : (st && !loaded ? 'background:var(--warn-soft);color:var(--fg);border:1px solid var(--warn)' : 'background:var(--surface);color:var(--fg);border:1px solid var(--line)')
+      });
+    });
+    const full = pads.length >= B.PADS;
+    return {
+      nav, outs, pads, gain: g, gpct: Math.max(0, Math.min(100, (g + 48) / 60 * 100)), gtxt: (g > 0 ? '+' : g < 0 ? '−' : '') + Math.abs(g).toFixed(1).replace('.0', '') + ' дБ',
+      addText: full ? 'Все 16 кнопок заняты' : '+ Добавить звук', addStyle: full ? 'opacity:.5;cursor:default' : 'cursor:pointer'
+    };
   }
 }
 </script>
 <script>DC.mount(Component);</script>
 <script src="app.js"></script>
+<script src="effects.js"></script>
 </body>
 </html>

@@ -13,6 +13,9 @@
 //   set strip I bass ДБ | treble ДБ     (−12..+12, эквалайзер дорожки: полка 100 Гц и полка 8 кГц)
 //   set bus K bass ДБ | treble ДБ       (то же на шине)
 //   set audio limiter 0/1 | delay K МС (K = 0..2 для A1..A3, 0..500 мс) | buffer КАДРОВ (128..1024) | reconnect 0/1/2
+//   set pad I file ПУТЬ | clear | play 0/1      (саундпад, I = 0..15; звук до 20 с; set pad all stop = «Стоп всё»)
+//   set pads gain ДБ | route K 0/1               (общая громкость звуков и на какие шины они играют)
+//   set rec dir ПУТЬ | mode separate/mixed | buses МАСКА      rec start [ИМЯ] | rec stop | rec delete ФАЙЛ   (запись выходов в WAV)
 //   set dev СЛОТ ИМЯ_УСТРОЙСТВА   (пустое имя или "-" отключает слот)
 // Ответы: строки JSON (hello, devices, state, m, err).
 // Драйвер (этап 6.1): если в общей памяти (shm.h) драйвер держит поток на «Bogestv0 Input N», дорожка V(N) берёт звук оттуда
@@ -26,6 +29,8 @@
 #include "eq.h"
 #include "inbuf.h"
 #include "mic.h"
+#include "pad.h"
+#include "rec.h"
 #include "shm.h"
 #include "third_party/miniaudio.h"
 
@@ -34,6 +39,9 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
+#include <filesystem>
+#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <mutex>
@@ -50,7 +58,7 @@ constexpr int kSlots = 7;
 constexpr int kMics = 2;
 constexpr size_t kMaxBlock = 4096;  // самый большой блок за один проход
 static const char* kSlotNames[kSlots] = {"hw1", "hw2", "a1", "a2", "a3", "b1", "b2"};
-static const char* kEngineVersion = "0.5.7";
+static const char* kEngineVersion = "0.6.0";
 
 // Кольцо «один пишет, один читает» для стерео-кадров. Связывает потоки разных устройств.
 struct Ring {
@@ -168,7 +176,10 @@ public:
     Strip strips[kStrips];
     Bus buses[kBuses];
     MicChain mic[kMics];
+    Pad pads[kPads];
+    Recorder rec;
     std::atomic<bool> dirty{true};
+    std::atomic<bool> rec_dirty{true};   // список записей изменился: окну нужно отправить новый
 
     // shm_name = nullptr отключает общую память (для проверок).
     explicit Mixer(ma_context* c, const char* shm_name = kShmDefaultName) : ctx_(c) {
@@ -237,6 +248,7 @@ public:
         using clock = std::chrono::steady_clock;
         std::lock_guard<std::mutex> lk(dev_mu_);
         poll_driver();
+        if (rec.needs_reap()) { rec.stop(); dirty = true; rec_dirty = true; }   // запись остановилась сама (ошибка диска): закрываем файлы
         refresh_locked();
         const int rc = reconnect_.load();   // 0: ничего не возвращаем сами; 1: только A1; 2: все устройства
         if (rc == 0) return "";
@@ -344,7 +356,12 @@ public:
         o << "],\"buses\":[";
         for (int k = 0; k < kBuses; ++k)
             o << (k ? "," : "") << "{\"g\":" << buses[k].gain_db.load() << ",\"m\":" << (buses[k].mute.load() ? 1 : 0) << "}";
-        o << "],\"eq\":{\"s\":[";
+        o << "],\"pads\":{\"g\":" << pad_gain_.load() << ",\"r\":" << pad_mask_.load() << ",\"l\":[";
+        for (int p = 0; p < kPads; ++p) o << (p ? "," : "") << pads[p].frames.load();
+        o << "],\"p\":[";
+        for (int p = 0; p < kPads; ++p) o << (p ? "," : "") << (pads[p].playing.load() ? 1 : 0);
+        o << "]},\"rec\":{\"on\":" << (rec.active() ? 1 : 0) << ",\"mask\":" << rec_mask_ << ",\"mixed\":" << (rec_mixed_ ? 1 : 0)
+          << ",\"dir\":\"" << json_escape(rec_dir_) << "\",\"err\":\"" << json_escape(rec.last_error()) << "\"},\"eq\":{\"s\":[";
         for (int i = 0; i < kStrips; ++i) o << (i ? "," : "") << "[" << strips[i].eq.bass_db.load() << "," << strips[i].eq.treble_db.load() << "]";
         o << "],\"b\":[";
         for (int k = 0; k < kBuses; ++k) o << (k ? "," : "") << "[" << buses[k].eq.bass_db.load() << "," << buses[k].eq.treble_db.load() << "]";
@@ -424,9 +441,43 @@ public:
         o.precision(1);
         for (int i = 0; i < kMics; ++i)
             o << (i ? "," : "") << "[" << mic[i].raw_floor.floor_db.load() << "," << mic[i].proc_floor.floor_db.load() << "]";
+        o << "],\"p\":[";
+        o.precision(3);
+        for (int p = 0; p < kPads; ++p) {
+            const size_t fr = pads[p].frames.load();
+            o << (p ? "," : "") << (pads[p].playing.load() && fr ? static_cast<double>(pads[p].pos.load()) / static_cast<double>(fr) : -1.0);
+        }
+        o << "],\"r\":[" << (rec.active() ? 1 : 0) << "," << rec.seconds() << "," << rec.dropped() << "]}";
+        return o.str();
+    }
+
+    // Список записей в папке записи: «recs». Имена начинаются с даты, поэтому сортировка по имени = от новых к старым.
+    std::string recs_json() const {
+        std::ostringstream o;
+        o << "{\"t\":\"recs\",\"dir\":\"" << json_escape(rec_dir_) << "\",\"files\":[";
+        namespace fs = std::filesystem;
+        std::vector<std::pair<std::string, uint64_t>> v;
+        try {
+            if (!rec_dir_.empty()) {
+                std::error_code ec;
+                for (fs::directory_iterator it(fs::u8path(rec_dir_), ec), end; !ec && it != end; it.increment(ec)) {
+                    if (!it->is_regular_file(ec) || it->path().extension() != ".wav") continue;
+                    v.emplace_back(it->path().filename().u8string(), static_cast<uint64_t>(it->file_size(ec)));
+                }
+            }
+        } catch (...) {}
+        std::sort(v.begin(), v.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+        if (v.size() > 200) v.resize(200);
+        for (size_t i = 0; i < v.size(); ++i) {
+            const double sec = v[i].second > 44 ? static_cast<double>(v[i].second - 44) / (48000.0 * 6.0) : 0.0;
+            o << (i ? "," : "") << "{\"n\":\"" << json_escape(v[i].first) << "\",\"b\":" << v[i].second << ",\"s\":" << std::fixed << std::setprecision(1) << sec << "}";
+        }
         o << "]}";
         return o.str();
     }
+
+    // Для самопроверки без звуковых устройств: один проход обработки.
+    void debug_process(float* out, size_t frames) { process(out, frames, 0); }
 
     // ---------- команды ----------
     // Возвращает пустую строку или текст ошибки.
@@ -434,6 +485,7 @@ public:
         std::istringstream in(line);
         std::string a, b;
         in >> a;
+        if (a == "rec") return rec_command(in);
         if (a != "set") return "неизвестная команда: " + a;
         in >> b;
         if (b == "strip") {
@@ -492,6 +544,53 @@ public:
                 (what == "bass" ? bus.eq.bass_db : bus.eq.treble_db) = v;
             }
             else return "шина: неизвестное свойство " + what;
+        } else if (b == "pad") {
+            std::string who, what;
+            in >> who >> what;
+            if (who == "all") {
+                if (what != "stop") return "pad all: только stop";
+                for (int p = 0; p < kPads; ++p) pads[p].playing.store(false);
+            } else {
+                int i = -1;
+                try { i = std::stoi(who); } catch (...) {}
+                if (i < 0 || i >= kPads) return "звук: номер 0.." + std::to_string(kPads - 1);
+                Pad& pd = pads[i];
+                if (what == "file") {
+                    std::string path; std::getline(in, path);
+                    if (!path.empty() && path[0] == ' ') path.erase(0, 1);
+                    const std::string e = load_pad(pd, path);
+                    dirty = true;
+                    return e;
+                } else if (what == "clear") { pd.unload(); }
+                else if (what == "play") {
+                    int v = 1; in >> v;
+                    if (!v) pd.playing.store(false);
+                    else {
+                        if (!pd.frames.load() || !pd.data.load()) return "у этой кнопки нет звука";
+                        pd.pos.store(0);
+                        pd.playing.store(true);
+                    }
+                } else return "звук: неизвестное действие " + what;
+            }
+        } else if (b == "pads") {
+            std::string what; in >> what;
+            if (what == "gain") { float v; if (!(in >> v) || !std::isfinite(v)) return "gain: нужно число"; pad_gain_ = std::max(-48.0f, std::min(12.0f, v)); }
+            else if (what == "route") {
+                int k, v; if (!(in >> k >> v) || k < 0 || k >= kBuses) return "route: номер шины 0..4 и 0/1";
+                const int m = pad_mask_.load();
+                pad_mask_ = v ? (m | (1 << k)) : (m & ~(1 << k));
+            } else return "звуки: неизвестное свойство " + what;
+        } else if (b == "rec") {
+            std::string what; in >> what;
+            if (rec.active()) return "настройки записи нельзя менять во время записи";
+            if (what == "dir") {
+                std::string d; std::getline(in, d);
+                if (!d.empty() && d[0] == ' ') d.erase(0, 1);
+                rec_dir_ = d;
+                rec_dirty = true;
+            } else if (what == "mode") { std::string v; in >> v; rec_mixed_ = (v == "mixed"); }
+            else if (what == "buses") { int m; if (!(in >> m)) return "buses: нужна маска"; rec_mask_ = m & 31; }
+            else return "запись: неизвестное свойство " + what;
         } else if (b == "audio") {
             std::string what; in >> what;
             if (what == "limiter") { int v; if (!(in >> v)) return "limiter: 0 или 1"; limiter_ = v != 0; }
@@ -555,17 +654,82 @@ private:
     std::atomic<int64_t> mst_last_ns_{0};          // когда был прошлый вызов (только аудио-поток; сторож обнуляет при пересборке)
     std::atomic<uint32_t> mst_calls_{0}, mst_late_{0}, mst_gap_us_{0}, mst_proc_us_{0}, mst_rebuilds_{0};
     std::atomic<bool> drv_alive_{false};
+    std::atomic<float> pad_gain_{0.0f};           // общая громкость звуков саундпада, дБ
+    std::atomic<int> pad_mask_{8 | 2};            // на какие шины играют звуки (по умолчанию B1 и A2, как в макете)
+    std::string rec_dir_;                         // папка записи (UTF-8)
+    int rec_mask_ = 2 | 8;                        // что записывать: A2 и B1
+    bool rec_mixed_ = false;                      // один общий файл или раздельно
     std::atomic<bool> limiter_{true};              // лимитер выходов (этап 5)
     std::atomic<int> buf_frames_{480};             // размер блока ведущего устройства, кадры (по умолчанию 480 = 10 мс)
     std::atomic<int> reconnect_{2};                // автопереподключение: 0 выкл, 1 только A1, 2 все устройства
     struct DevInfo { uint32_t rate = 0, ch = 0, bits = 0; } info_[kSlots];   // как Windows открыла устройство (под dev_mu_)
     std::atomic<unsigned> drv_mask_{0};            // бит 0: драйвер жив; 1..6: входы V1..V6; 7..8: выходы B1, B2
 
+    // Загрузка звука в кнопку саундпада. Файл читается целиком и декодируется в 48 кГц стерео float (wav, mp3, flac).
+    std::string load_pad(Pad& pd, const std::string& path) {
+        std::vector<unsigned char> bytes;
+        if (!read_file_u8(path, bytes, 64u * 1024u * 1024u)) return "не удалось прочитать файл (нет файла или он больше 64 МБ): " + path;
+        ma_decoder_config dc = ma_decoder_config_init(ma_format_f32, 2, 48000);
+        ma_uint64 frames = 0;
+        void* data = nullptr;
+        if (ma_decode_memory(bytes.data(), bytes.size(), &dc, &frames, &data) != MA_SUCCESS || !data || frames == 0) {
+            if (data) ma_free(data, nullptr);
+            return "не удалось прочитать звук (нужен wav, mp3 или flac): " + path;
+        }
+        if (frames > kPadMaxFrames) { ma_free(data, nullptr); return "звук длиннее 20 секунд: для таких лучше музыкальная дорожка"; }
+        pd.unload();   // остановить, дождаться аудио-потока, освободить старый звук
+        pd.data.store(static_cast<float*>(data));
+        pd.frames.store(static_cast<size_t>(frames));
+        return "";
+    }
+
+    // Команды записи: rec start [ИМЯ] | rec stop | rec delete ИМЯ_ФАЙЛА. Папка и выходы задаются командами set rec ....
+    std::string rec_command(std::istringstream& in) {
+        std::string what; in >> what;
+        namespace fs = std::filesystem;
+        if (what == "start") {
+            if (rec.active()) return "запись уже идёт";
+            if (rec.needs_reap()) rec.stop();
+            if (rec_dir_.empty()) return "запись: папка не задана";
+            std::string name; std::getline(in, name);
+            while (!name.empty() && name[0] == ' ') name.erase(0, 1);
+            for (char& c : name) if (c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|') c = '-';
+            if (name.empty()) {
+                const std::time_t t = std::time(nullptr);
+                std::tm tm{};
+#ifdef _WIN32
+                localtime_s(&tm, &t);
+#else
+                localtime_r(&t, &tm);
+#endif
+                char b[32];
+                std::strftime(b, sizeof b, "%Y-%m-%d %H-%M-%S", &tm);
+                name = b;
+            }
+            try { std::error_code ec; fs::create_directories(fs::u8path(rec_dir_), ec); if (ec) return "не удалось создать папку записи: " + rec_dir_; } catch (...) { return "папка записи: неверный путь"; }
+            const std::string e = rec.start(rec_mask_, rec_mixed_, rec_dir_, name);
+            dirty = true; rec_dirty = true;
+            return e;
+        }
+        if (what == "stop") { rec.stop(); dirty = true; rec_dirty = true; return ""; }
+        if (what == "delete") {
+            std::string name; std::getline(in, name);
+            while (!name.empty() && name[0] == ' ') name.erase(0, 1);
+            if (name.empty() || name.find('/') != std::string::npos || name.find('\\') != std::string::npos || name.size() < 5 || name.substr(name.size() - 4) != ".wav") return "удалять можно только файлы .wav из папки записи";
+            for (const std::string& p : rec.files()) if (rec.active() && p.size() >= name.size() && p.compare(p.size() - name.size(), name.size(), name) == 0) return "этот файл пишется прямо сейчас";
+            try { std::error_code ec; fs::remove(fs::u8path(rec_dir_) / fs::u8path(name), ec); if (ec) return "не удалось удалить файл"; } catch (...) { return "не удалось удалить файл"; }
+            rec_dirty = true;
+            return "";
+        }
+        return "запись: неизвестная команда " + what;
+    }
+
     std::string load_file(Strip& s, const std::string& path) {
         ma_decoder_config dc = ma_decoder_config_init(ma_format_f32, 2, 48000);
         ma_uint64 frames = 0;
         void* data = nullptr;
-        if (ma_decode_file(path.c_str(), &dc, &frames, &data) != MA_SUCCESS || !data) return "не удалось прочитать файл: " + path;
+        std::vector<unsigned char> bytes;
+        if (!read_file_u8(path, bytes, 256u * 1024u * 1024u) || ma_decode_memory(bytes.data(), bytes.size(), &dc, &frames, &data) != MA_SUCCESS || !data) return "не удалось прочитать файл: " + path;
         s.fframes = 0;  // старый буфер намеренно не освобождаем: поток мог его ещё читать (только для тестов)
         s.fdata = static_cast<float*>(data);
         s.fpos = 0;
@@ -750,6 +914,34 @@ private:
         for (size_t f = 0; f < n; ++f) { g += step; x[f * 2] *= g; x[f * 2 + 1] *= g; }
     }
 
+    // Звуки саундпада на шины. Вызывается из потока ведущего устройства. busy ставится ДО проверки playing (см. Pad::unload).
+    void mix_pads(size_t n) {
+        const int mask = pad_mask_.load(std::memory_order_relaxed);
+        const float g = gain_from_db(pad_gain_.load(std::memory_order_relaxed));
+        for (int p = 0; p < kPads; ++p) {
+            Pad& pd = pads[p];
+            pd.busy.store(true);
+            if (pd.playing.load()) {
+                const float* data = pd.data.load();
+                const size_t total = pd.frames.load();
+                const size_t pos = pd.pos.load(std::memory_order_relaxed);
+                if (!data || pos >= total) { pd.playing.store(false); dirty = true; }
+                else {
+                    const size_t m = std::min(n, total - pos);
+                    for (int k = 0; k < kBuses; ++k) {
+                        if (!(mask & (1 << k))) continue;
+                        float* a = acc_[k].data();
+                        const float* s = data + pos * 2;
+                        for (size_t j = 0; j < m * 2; ++j) a[j] += s[j] * g;
+                    }
+                    pd.pos.store(pos + m, std::memory_order_relaxed);
+                    if (pos + m >= total) { pd.playing.store(false); dirty = true; }
+                }
+            }
+            pd.busy.store(false);
+        }
+    }
+
     // Главный проход: дорожки -> маршруты -> шины. Вызывается из потока ведущего устройства.
     void process(float* out, size_t frames, int master_bus) {
         bool any_solo = false;
@@ -794,6 +986,7 @@ private:
                     for (size_t j = 0; j < n * 2; ++j) a[j] += t[j];
                 }
             }
+            mix_pads(n);   // саундпад: звуки на выбранные шины (до эквалайзера, фейдера и лимитера шины)
             for (int k = 0; k < kBuses; ++k) {
                 Bus& b = buses[k];
                 float* a = acc_[k].data();
@@ -805,6 +998,7 @@ private:
                 if (limiter_.load(std::memory_order_relaxed)) for (size_t j = 0; j < n * 2; ++j) a[j] = soft_limit(a[j]);  // лимитер выходов
                 else for (size_t j = 0; j < n * 2; ++j) a[j] = std::max(-1.0f, std::min(1.0f, a[j]));      // без лимитера: жёсткая обрезка, чтобы не выйти за ±1
                 b.meter.feed(a, n, 2);
+                rec.feed(k, a, n);   // запись выходов (то, что реально уходит на выход шины)
                 if (k == master_bus) std::memcpy(out + done * 2, a, n * 2 * sizeof(float));
                 else if (ok_[2 + k]) b.ring.push(a, n);
                 if (shm_ && k >= kBuses - kShmBusRings && shm_out_[k - (kBuses - kShmBusRings)].active())
@@ -841,6 +1035,7 @@ inline int run_server(ma_context& ctx) {
             std::this_thread::sleep_for(std::chrono::milliseconds(33));
             emit(mixer.meters_json());
             if (mixer.dirty.exchange(false)) emit(mixer.state_json());
+            if (mixer.rec_dirty.exchange(false)) emit(mixer.recs_json());
         }
     });
 
@@ -861,6 +1056,7 @@ inline int run_server(ma_context& ctx) {
         if (line.empty()) continue;
         if (line == "quit") break;
         if (line == "get") { emit(mixer.state_json()); continue; }
+        if (line == "recs") { emit(mixer.recs_json()); continue; }
         if (line == "devices") { mixer.refresh_devices(); emit(mixer.devices_json()); mixer.dirty = true; continue; }
         std::string err = mixer.command(line);
         if (!err.empty()) emit_err(err);
