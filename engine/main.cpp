@@ -948,6 +948,51 @@ static int selftest_pad_rec() {
     return bad;
 }
 
+// Прослушивание дорожки на телефоне (удалённый пульт): звук после фейдера, Mute и Solo уходит в кольцо, а base64 разбирается обратно.
+static int selftest_listen() {
+    int bad = 0;
+    auto check = [&](bool ok, const char* what) { std::printf("%s %s\n", ok ? "ok    " : "ОШИБКА", what); if (!ok) ++bad; };
+    ma_backend nb[] = {ma_backend_null};
+    ma_context ctx;
+    ma_context_config cc = ma_context_config_init();
+    if (ma_context_init(nb, 1, &cc, &ctx) != MA_SUCCESS) { std::printf("пропущено: нулевой звуковой бэкенд недоступен\n"); return 0; }
+    {
+        bg::Mixer m(&ctx, nullptr);
+        std::vector<float> o(480 * 2), got;
+        auto peak = [](const std::vector<float>& v) { float p = 0; for (float x : v) p = std::max(p, std::fabs(x)); return p; };
+        m.command("set strip 3 src sine"); m.command("set strip 3 gain 0"); m.command("set strip 4 src sine");
+        check(m.listening() == -1 && m.listen_drain(got) == -1, "по умолчанию никто не слушает");
+        check(!m.command("set listen 9").empty() && !m.command("set listen abc").empty() && m.listening() == -1, "неверная дорожка даёт ошибку");
+        check(m.command("set listen 3").empty() && m.listening() == 3, "дорожка 3 выбрана для прослушивания");
+        m.listen_drain(got);  // сброс после смены дорожки
+        for (int i = 0; i < 10; ++i) m.debug_process(o.data(), 480);
+        const int idx = m.listen_drain(got);
+        check(idx == 3 && got.size() == 480u * 10 * 2, "за 10 блоков по 480 кадров пришло ровно 4800 кадров");
+        check(peak(got) > 0.05f, "в потоке есть звук дорожки");
+        m.command("set strip 3 mute 1");
+        m.debug_process(o.data(), 480); m.listen_drain(got);   // старый звук (мягкий переход громкости)
+        for (int i = 0; i < 10; ++i) m.debug_process(o.data(), 480);
+        m.listen_drain(got);
+        check(peak(got) < 0.001f, "Mute дорожки отключает звук и на телефоне");
+        m.command("set strip 3 mute 0"); m.command("set listen 4");
+        m.listen_drain(got);
+        for (int i = 0; i < 4; ++i) m.debug_process(o.data(), 480);
+        check(m.listen_drain(got) == 4 && got.size() == 480u * 4 * 2, "переключение на другую дорожку работает");
+        m.command("set listen off");
+        for (int i = 0; i < 4; ++i) m.debug_process(o.data(), 480);
+        check(m.listen_drain(got) == -1 && got.empty(), "после «off» звук не копится");
+        check(m.state_json().find("\"listen\":-1") != std::string::npos, "состояние сообщает, что никто не слушает");
+        // Кодирование: 16 бит little-endian и base64 (контрольные значения из RFC 4648).
+        const unsigned char z[] = {'f', 'o', 'o', 'b', 'a'};
+        check(bg::base64_encode(z, 5) == "Zm9vYmE=" && bg::base64_encode(z, 4) == "Zm9vYg==" && bg::base64_encode(z, 3) == "Zm9v", "base64 совпадает с RFC 4648");
+        std::vector<float> f = {0.0f, 1.0f, -1.0f, 2.0f}; std::vector<unsigned char> b;
+        bg::pcm16_from_float(f, b);
+        check(b.size() == 8 && b[2] == 0xFF && b[3] == 0x7F && b[4] == 0x01 && b[5] == 0x80 && b[6] == 0xFF && b[7] == 0x7F, "16 бит: 0, +1, -1, обрезка выше предела");
+    }
+    ma_context_uninit(&ctx);
+    return bad;
+}
+
 static int selftest() {
     int bad = 0;
     auto check = [&](bool ok, const char* what) { std::printf("%s %s\n", ok ? "ok    " : "ОШИБКА", what); if (!ok) ++bad; };
@@ -979,6 +1024,7 @@ static int selftest() {
     bad += selftest_driver_mixer();
     bad += selftest_eq();
     bad += selftest_pad_rec();
+    bad += selftest_listen();
     std::printf(bad ? "\nЕсть ошибки: %d\n" : "\nВсе проверки пройдены.\n", bad);
     return bad ? 1 : 0;
 }

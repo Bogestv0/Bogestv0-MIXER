@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Bogestv0 MIXER — пульт</title>
+<link rel="stylesheet" href="/fonts.css">
+<style>
+:root{--bg:#f1f2f6;--surface:#fff;--surface-2:#eef0f5;--line:#e3e5ea;--fg:#0b0b0c;--muted:#667080;--signal:#1f77bd;--signal-ink:#fff;--signal-soft:#e6f1fb;--warn:#8a5a00;--warn-soft:#fdf1d8;--bad:#b3261e;--ok:#1a7f4b;--ok-soft:#e3f5ea;--m-mid:#d9a21b;--f-display:'Unbounded','Onest',system-ui,sans-serif;--f-body:'Onest',system-ui,sans-serif;--f-mono:'JetBrains Mono',ui-monospace,monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#181818;--surface:#212121;--surface-2:#2a2a2a;--line:#2f2f2f;--fg:#f5f5f5;--muted:#a3a9b3;--signal:#6ab3f3;--signal-ink:#0b1a2a;--signal-soft:#1d3247;--warn:#f5cf8a;--warn-soft:#3a2c14;--bad:#ff8a80;--ok:#7fd6a4;--ok-soft:#173326;--m-mid:#f5cf8a;color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font:400 15px/1.5 var(--f-body);-webkit-text-size-adjust:100%}
+body{padding:16px max(16px,env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+button{font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+button:focus-visible,input:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+h2{margin:0;font:600 11px var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+#app{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.row{display:flex;align-items:center;gap:10px}
+.between{justify-content:space-between}
+.card{background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:12px}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 10px;border-radius:99px;white-space:nowrap}
+.pill i{width:7px;height:7px;border-radius:50%;background:currentColor}
+.ok{background:var(--ok-soft);color:var(--ok)}
+.warn{background:var(--warn-soft);color:var(--warn)}
+.btn{min-height:44px;padding:0 16px;border-radius:12px;font:500 14px var(--f-body);border:1px solid var(--line);background:var(--surface);color:var(--fg)}
+.btn.on{background:var(--signal);color:var(--signal-ink);border-color:var(--signal)}
+.btn.outline{background:none;color:var(--signal);border-color:var(--signal)}
+.btn.bad{background:none;color:var(--bad);border-color:var(--bad)}
+.hero{background:var(--signal-soft);border-radius:20px;padding:14px 18px;display:flex;flex-direction:column;gap:12px}
+.mono{font-family:var(--f-mono)}
+.fader{position:relative;height:44px;touch-action:none;user-select:none;-webkit-user-select:none;cursor:ew-resize}
+.fader .rail{position:absolute;left:0;right:0;top:20px;height:4px;border-radius:2px;background:var(--line)}
+.fader .cap{position:absolute;top:5px;width:44px;height:34px;border-radius:10px;background:var(--surface);border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.14);display:flex;align-items:center;justify-content:center}
+.fader .cap b{display:block;width:3px;height:60%;border-radius:2px;background:var(--signal)}
+.meter{height:6px;border-radius:3px;position:relative;overflow:hidden;background:linear-gradient(to right,var(--ok) 0%,var(--ok) 60%,var(--m-mid) 82%,var(--bad) 100%)}
+.meter span{position:absolute;right:0;top:0;bottom:0;background:var(--surface-2);width:100%}
+.routes{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}
+.routes .btn{padding:0;border-radius:10px;font:500 13px var(--f-mono);color:var(--muted)}
+.routes .btn.on{background:var(--signal-soft);color:var(--signal);border-color:var(--signal);box-shadow:0 0 0 1px var(--signal)}
+.act{display:flex;gap:6px}
+.act .btn{flex:1;padding:0}
+.act .btn.mute.on{background:var(--bad);color:#fff;border-color:var(--bad)}
+.act .btn.solo.on{background:var(--warn-soft);color:var(--warn);border-color:var(--warn)}
+.act .btn.listen{flex:1.4;display:flex;align-items:center;justify-content:center;gap:6px;background:none;color:var(--signal);border-color:var(--signal)}
+.act .btn.listen.on{background:var(--signal);color:var(--signal-ink)}
+.scenes{display:flex;flex-wrap:wrap;gap:8px}
+.login{display:flex;flex-direction:column;gap:12px;padding:18px;border-radius:20px;background:var(--surface);box-shadow:0 1px 0 var(--line)}
+.login input{min-height:52px;border-radius:12px;border:1px solid var(--line);background:var(--surface-2);color:var(--fg);font:600 22px var(--f-mono);letter-spacing:.3em;text-align:center}
+.msg{font-size:13px;color:var(--bad);min-height:20px}
+.dim{opacity:.5}
+</style>
+</head>
+<body>
+<div id="app" aria-live="polite"></div>
+<noscript>Для пульта нужен JavaScript.</noscript>
+<script src="/remote.js"></script>
+</body>
+</html>

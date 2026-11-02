@@ -16,6 +16,7 @@
 //   set pad I file ПУТЬ | clear | play 0/1      (саундпад, I = 0..15; звук до 20 с; set pad all stop = «Стоп всё»)
 //   set pads gain ДБ | route K 0/1               (общая громкость звуков и на какие шины они играют)
 //   set rec dir ПУТЬ | mode separate/mixed | buses МАСКА      rec start [ИМЯ] | rec stop | rec delete ФАЙЛ   (запись выходов в WAV)
+//   set listen I | off          (прослушивание дорожки на телефоне: звук дорожки после фейдера уходит строками {"t":"pcm"}, см. README движка)
 //   set dev СЛОТ ИМЯ_УСТРОЙСТВА   (пустое имя или "-" отключает слот)
 // Ответы: строки JSON (hello, devices, state, m, err).
 // Драйвер (этап 6.1): если в общей памяти (shm.h) драйвер держит поток на «Bogestv0 Input N», дорожка V(N) берёт звук оттуда
@@ -58,7 +59,7 @@ constexpr int kSlots = 7;
 constexpr int kMics = 2;
 constexpr size_t kMaxBlock = 4096;  // самый большой блок за один проход
 static const char* kSlotNames[kSlots] = {"hw1", "hw2", "a1", "a2", "a3", "b1", "b2"};
-static const char* kEngineVersion = "0.6.1";
+static const char* kEngineVersion = "0.6.2";
 
 // Кольцо «один пишет, один читает» для стерео-кадров. Связывает потоки разных устройств.
 struct Ring {
@@ -194,6 +195,7 @@ public:
         for (int i = 0; i < kMics; ++i) mic_rd_[i].configure(kHwTargetFrames);
         for (int k = 0; k < kBuses; ++k) bus_rd_[k].configure(kHwTargetFrames);
         for (int k = 0; k < kBuses; ++k) buses[k].ring.init(8192);
+        listen_ring_.init(16384);
         for (int s = 0; s < kSlots; ++s) { roles_[s] = {this, s}; ok_[s] = false; }
         acc_.assign(kBuses, std::vector<float>(kMaxBlock * 2));
         tmp_.assign(kMaxBlock * 2, 0.0f);
@@ -341,7 +343,7 @@ public:
         std::ostringstream o;
         o << "{\"t\":\"state\",\"v\":\"" << kEngineVersion << "\",\"running\":" << (master_ >= 0 ? 1 : 0)
           << ",\"master\":" << (master_ >= 0 ? std::string("\"") + kSlotNames[2 + master_] + "\"" : std::string("null"))
-          << ",\"rate\":48000,\"ms\":" << latency_ms_ << ",\"strips\":[";
+          << ",\"rate\":48000,\"listen\":" << listen_.load() << ",\"ms\":" << latency_ms_ << ",\"strips\":[";
         for (int i = 0; i < kStrips; ++i) {
             const Strip& s = strips[i];
             o << (i ? "," : "") << "{\"g\":" << s.gain_db.load() << ",\"m\":" << (s.mute.load() ? 1 : 0)
@@ -475,6 +477,28 @@ public:
         o << "]}";
         return o.str();
     }
+
+    // Прослушивание: забирает накопленный звук дорожки (стерео float). Возвращает номер дорожки или -1, если никто не слушает.
+    // Вызывать только из одного потока (listen_pump).
+    int listen_drain(std::vector<float>& out) {
+        out.clear();
+        const int idx = listen_.load(std::memory_order_relaxed);
+        Ring& r = listen_ring_;
+        size_t rv = r.r.load(std::memory_order_relaxed);
+        const size_t wv = r.w.load(std::memory_order_acquire);
+        if (idx < 0 || listen_flush_.exchange(false)) { r.r.store(wv, std::memory_order_release); return idx; }
+        size_t av = wv - rv;
+        if (av > r.cap) { rv = wv - r.cap; av = r.cap; }
+        out.resize(av * 2);
+        for (size_t i = 0; i < av; ++i) {
+            const size_t k = (rv + i) % r.cap;
+            out[i * 2] = r.buf[k * 2];
+            out[i * 2 + 1] = r.buf[k * 2 + 1];
+        }
+        r.r.store(wv, std::memory_order_release);
+        return idx;
+    }
+    int listening() const { return listen_.load(std::memory_order_relaxed); }
 
     // Для самопроверки без звуковых устройств: один проход обработки.
     void debug_process(float* out, size_t frames) { process(out, frames, 0); }
@@ -613,6 +637,15 @@ public:
             }
             else if (what == "reconnect") { int v; if (!(in >> v)) return "reconnect: 0, 1 или 2"; reconnect_ = std::max(0, std::min(2, v)); }
             else return "звук: неизвестное свойство " + what;
+        } else if (b == "listen") {
+            // set listen I (0..7) | off : какую дорожку отправлять на телефон
+            std::string v; in >> v;
+            int i = -1;
+            if (v != "off") {
+                try { i = std::stoi(v); } catch (...) { return "listen: номер дорожки или off"; }
+                if (i < 0 || i >= kStrips) return "listen: дорожка 0.." + std::to_string(kStrips - 1);
+            }
+            if (listen_.exchange(i) != i) listen_flush_ = true;
         } else if (b == "dev") {
             std::string slot; in >> slot;
             int s = slot_index(slot);
@@ -660,6 +693,11 @@ private:
     int rec_mask_ = 2 | 8;                        // что записывать: A2 и B1
     bool rec_mixed_ = false;                      // один общий файл или раздельно
     std::atomic<bool> limiter_{true};              // лимитер выходов (этап 5)
+    // Прослушивание дорожки на телефоне (удалённый пульт): звук одной дорожки после фейдера, Mute и Solo копируется в кольцо,
+    // а поток listen_pump отправляет его окну порциями. -1 = никто не слушает.
+    std::atomic<int> listen_{-1};
+    std::atomic<bool> listen_flush_{false};        // выбросить накопленное (сменили дорожку)
+    Ring listen_ring_;
     std::atomic<int> buf_frames_{480};             // размер блока ведущего устройства, кадры (по умолчанию 480 = 10 мс)
     std::atomic<int> reconnect_{2};                // автопереподключение: 0 выкл, 1 только A1, 2 все устройства
     struct DevInfo { uint32_t rate = 0, ch = 0, bits = 0; } info_[kSlots];   // как Windows открыла устройство (под dev_mu_)
@@ -979,6 +1017,7 @@ private:
                 ramp(t, n, s.cur_gain, target);
                 s.cur_gain = target;
                 s.meter.feed(t, n, 2);
+                if (listen_.load(std::memory_order_relaxed) == i) listen_ring_.push(t, n);   // прослушивание на телефоне
                 const int mask = s.route.load(std::memory_order_relaxed);
                 for (int k = 0; k < kBuses; ++k) {
                     if (!(mask & (1 << k))) continue;
@@ -1018,6 +1057,32 @@ inline void emit(const std::string& line) {
     std::fputc('\n', stdout);
     std::fflush(stdout);
 }
+// Base64 для передачи звука в строке JSON (поток прослушивания идёт тем же каналом stdout).
+inline std::string base64_encode(const unsigned char* d, size_t n) {
+    static const char* T = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string o;
+    o.reserve((n + 2) / 3 * 4);
+    for (size_t i = 0; i < n; i += 3) {
+        const unsigned v = (d[i] << 16) | (i + 1 < n ? d[i + 1] << 8 : 0) | (i + 2 < n ? d[i + 2] : 0);
+        o += T[(v >> 18) & 63];
+        o += T[(v >> 12) & 63];
+        o += i + 1 < n ? T[(v >> 6) & 63] : '=';
+        o += i + 2 < n ? T[v & 63] : '=';
+    }
+    return o;
+}
+// Стерео float -> 16 бит со знаком, little-endian (для телефона).
+inline void pcm16_from_float(const std::vector<float>& in, std::vector<unsigned char>& out) {
+    out.resize(in.size() * 2);
+    for (size_t i = 0; i < in.size(); ++i) {
+        float x = in[i];
+        x = x > 1.0f ? 1.0f : (x < -1.0f ? -1.0f : x);
+        const int v = static_cast<int>(x * 32767.0f + (x >= 0 ? 0.5f : -0.5f));
+        out[i * 2] = static_cast<unsigned char>(v & 0xFF);
+        out[i * 2 + 1] = static_cast<unsigned char>((v >> 8) & 0xFF);
+    }
+}
+
 inline void emit_err(const std::string& msg) { emit("{\"t\":\"err\",\"msg\":\"" + json_escape(msg) + "\"}"); }
 
 inline int run_server(ma_context& ctx) {
@@ -1036,6 +1101,19 @@ inline int run_server(ma_context& ctx) {
             emit(mixer.meters_json());
             if (mixer.dirty.exchange(false)) emit(mixer.state_json());
             if (mixer.rec_dirty.exchange(false)) emit(mixer.recs_json());
+        }
+    });
+
+    // Прослушивание дорожки на телефоне: раз в 20 мс отправляем накопленный звук строкой {"t":"pcm"} (48 кГц, стерео, 16 бит).
+    std::thread listen_pump([&] {
+        std::vector<float> buf;
+        std::vector<unsigned char> bytes;
+        while (!quit) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            const int idx = mixer.listen_drain(buf);
+            if (idx < 0 || buf.empty()) continue;
+            pcm16_from_float(buf, bytes);
+            emit("{\"t\":\"pcm\",\"i\":" + std::to_string(idx) + ",\"d\":\"" + base64_encode(bytes.data(), bytes.size()) + "\"}");
         }
     });
 
@@ -1063,6 +1141,7 @@ inline int run_server(ma_context& ctx) {
     }
     quit = true;  // окно закрылось или прислало quit
     pump.join();
+    listen_pump.join();
     guard.join();
     return 0;
 }

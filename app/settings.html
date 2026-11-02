@@ -82,6 +82,10 @@ html,body{height:100%;overflow:hidden}
       </div>
     </div>
 
+    <div style="display:flex;gap:6px">
+      <sc-for list="{{tabs}}" as="t"><button onClick="{{t.pick}}" aria-pressed="{{t.on}}" style="min-height:36px;padding:0 16px;border-radius:10px;font:500 13px var(--f-body);{{t.style}}">{{t.label}}</button></sc-for>
+    </div>
+
     <!-- hero -->
     <div style="background:var(--signal-soft);border-radius:20px;padding:18px 22px;display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between">
       <div style="min-width:0">
@@ -94,6 +98,7 @@ html,body{height:100%;overflow:hidden}
       </div>
     </div>
 
+    <sc-if value="{{tabMain}}">
     <div style="flex:1;min-height:0;display:flex;gap:14px;overflow-y:auto;align-items:flex-start">
 
       <!-- LEFT -->
@@ -237,6 +242,109 @@ html,body{height:100%;overflow:hidden}
         </div>
       </div>
     </div>
+    </sc-if>
+    <sc-if value="{{tabRemote}}">
+    <div style="flex:1;min-height:0;display:flex;gap:14px;overflow-y:auto;align-items:flex-start">
+
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:14px">
+        <div style="background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:4px">
+          <h2 style="margin:0 0 8px;font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Удалённый пульт</h2>
+          <sc-for list="{{remoteRows}}" as="r">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0;border-top:{{r.border}}">
+              <div style="min-width:0">
+                <div style="font-weight:600;line-height:1.3">{{r.title}}</div>
+                <div style="font-size:13px;color:var(--muted)">{{r.desc}}</div>
+              </div>
+              <button role="switch" aria-checked="{{r.on}}" aria-label="{{r.title}}" onClick="{{r.toggle}}" style="flex:0 0 46px;width:46px;height:26px;padding:0;border-radius:13px;position:relative;{{r.track}}">
+                <span style="position:absolute;top:2px;width:20px;height:20px;border-radius:50%;{{r.knob}}"></span>
+              </button>
+            </div>
+          </sc-for>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0;border-top:1px solid var(--line);opacity:{{pinOpacity}}">
+            <div style="min-width:0">
+              <div style="font-weight:600;line-height:1.3">PIN-код</div>
+              <div style="font-size:13px;color:var(--muted)">Телефон спросит его один раз и запомнит.</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="min-height:36px;display:inline-flex;align-items:center;padding:0 14px;border-radius:10px;background:var(--surface-2);font:600 16px var(--f-mono);letter-spacing:.2em">{{pinText}}</span>
+              <button onClick="{{newPin}}" style="min-height:36px;padding:0 14px;border-radius:10px;background:none;color:var(--fg);border:1px solid var(--line);font:500 13px var(--f-body)">Новый</button>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0;border-top:1px solid var(--line)">
+            <div style="min-width:0">
+              <div style="font-weight:600;line-height:1.3">Порт</div>
+              <div style="font-size:13px;color:var(--muted)">Если 8080 занят другой программой, укажите другой (1024–65535).</div>
+            </div>
+            <input type="number" min="1024" max="65535" value="{{port}}" aria-label="Порт пульта" onchange="{{portChange}}" style="width:96px;box-sizing:border-box;min-height:36px;padding:0 12px;border-radius:10px;background:var(--surface);color:var(--fg);border:1px solid var(--line);font:500 14px var(--f-mono)">
+          </div>
+        </div>
+
+        <div style="background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:4px">
+          <h2 style="margin:0 0 8px;font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Звук на телефоне</h2>
+          <sc-for list="{{listenRows}}" as="r">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0">
+              <div style="min-width:0">
+                <div style="font-weight:600;line-height:1.3">{{r.title}}</div>
+                <div style="font-size:13px;color:var(--muted)">{{r.desc}}</div>
+              </div>
+              <button role="switch" aria-checked="{{r.on}}" aria-label="{{r.title}}" onClick="{{r.toggle}}" style="flex:0 0 46px;width:46px;height:26px;padding:0;border-radius:13px;position:relative;{{r.track}}">
+                <span style="position:absolute;top:2px;width:20px;height:20px;border-radius:50%;{{r.knob}}"></span>
+              </button>
+            </div>
+          </sc-for>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0;border-top:1px solid var(--line);opacity:{{bufOpacity}}">
+            <div style="min-width:0">
+              <div style="font-weight:600;line-height:1.3">Запас звука на телефоне</div>
+              <div style="font-size:13px;color:var(--muted)">Меньше запас: быстрее отклик, но при плохом Wi-Fi возможны щелчки.</div>
+            </div>
+            <div style="display:flex;gap:6px">
+              <sc-for list="{{bufs}}" as="b">
+                <button onClick="{{b.pick}}" aria-pressed="{{b.on}}" style="min-height:36px;padding:0 12px;border-radius:10px;font:500 13px var(--f-body);white-space:nowrap;{{b.style}}">{{b.label}}</button>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:14px">
+        <div style="background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px">
+          <h2 style="margin:0;font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Подключение</h2>
+          <sc-if value="{{remoteRunning}}">
+            <div style="display:flex;gap:18px;align-items:center;padding:14px;border-radius:14px;background:var(--surface-2)">
+              <img src="{{qrSrc}}" alt="QR-код со ссылкой на пульт" width="148" height="148" style="flex:none;border-radius:10px;background:#fff">
+              <div style="min-width:0;display:flex;flex-direction:column;gap:8px">
+                <div style="font-size:13px;color:var(--muted)">Наведите камеру телефона или введите адрес в браузере (телефон в той же Wi-Fi сети):</div>
+                <div style="font:600 17px/1.2 var(--f-mono);word-break:break-all">{{remoteUrl}}</div>
+                <div style="display:flex;gap:6px"><button onClick="{{copyUrl}}" style="min-height:36px;padding:0 14px;border-radius:10px;background:none;color:var(--fg);border:1px solid var(--line);font:500 13px var(--f-body)">Скопировать</button></div>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{remoteOff}}">
+            <div style="padding:14px;border-radius:14px;background:var(--surface-2);font-size:13px;color:var(--muted)">{{offText}}</div>
+          </sc-if>
+          <sc-if value="{{remoteError}}">
+            <div style="padding:10px 14px;border-radius:12px;background:var(--warn-soft);color:var(--warn);font-size:13px">{{remoteErrorText}}</div>
+          </sc-if>
+        </div>
+
+        <div style="background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:4px">
+          <h2 style="margin:0 0 8px;font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Подключённые устройства</h2>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0">
+            <div style="min-width:0;display:flex;align-items:center;gap:10px">
+              <span style="width:8px;height:8px;border-radius:50%;flex:none;background:{{dotColor}}"></span>
+              <div><div style="font-weight:600;line-height:1.3">{{clientsText}}</div><div style="font-size:13px;color:var(--muted)">{{listenersText}}</div></div>
+            </div>
+            <button onClick="{{kickAll}}" style="min-height:36px;padding:0 14px;border-radius:10px;background:none;color:var(--fg);border:1px solid var(--line);font:500 13px var(--f-body);white-space:nowrap">Отключить всех</button>
+          </div>
+        </div>
+
+        <div style="background:var(--warn-soft);border-radius:16px;padding:14px 18px;display:flex;flex-direction:column;gap:2px">
+          <div style="font:600 14px var(--f-body);color:var(--warn)">Только для домашней сети</div>
+          <div style="font-size:13px;color:var(--warn)">При первом включении Windows спросит разрешение брандмауэра: выберите «Частные сети». Наружу, в интернет, пульт не открывается. Не включайте его в чужих Wi-Fi сетях (кафе, общежитие).</div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
   </div>
 </div>
 </template>
@@ -245,7 +353,16 @@ html,body{height:100%;overflow:hidden}
 class Component extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { confirmReset: false };
+    this.state = { confirmReset: false, tab: 'main', rs: null, qr: '' };
+    // Пока открыта вкладка пульта, раз в 1,5 секунды спрашиваем у программы, кто подключён.
+    this.pollTimer = setInterval(async () => {
+      if (this.state.tab !== 'remote') return;
+      const rs = await Bridge.remoteStatus();
+      if (!rs) return;
+      let qr = this.state.qr;
+      if (rs.running && rs.url !== this.state.qrUrl) { qr = await Bridge.remoteQr(); this.setState({ rs, qr, qrUrl: rs.url }); return; }
+      this.setState({ rs, qr });
+    }, 1500);
     // Настройки программы хранит мост (Bridge.settings.app); экран только показывает их и меняет.
     Bridge.on((t) => { if (['app', 'unsaved', 'ready', 'conn'].includes(t) && window.__dc) window.__dc.setState({}); });
   }
@@ -300,8 +417,63 @@ class Component extends DCLogic {
       sw('autostart', 'Запускать вместе с Windows', 'Микшер включается при входе в систему сразу в трей, и звук работает сразу. ' + needApp, 'none', { off: !inTauri })
     ];
 
+    // ---- вкладка «Удалённый пульт» ----
+    const tab = this.state.tab;
+    const rs = this.state.rs;
+    const switchOf = (on, title, desc, border, toggle, off) => ({
+      title, desc, border: border || 'none', on,
+      track: on ? 'background:var(--signal);border:1px solid var(--signal)' : 'background:var(--surface-2);border:1px solid var(--muted)' + (off ? ';opacity:.5;cursor:not-allowed' : ''),
+      knob: on ? 'left:22px;background:var(--signal-ink)' : 'left:2px;background:var(--muted)',
+      toggle: () => { if (!off) toggle(); }
+    });
+    const remoteRows = [
+      switchOf(!!a.remoteOn, 'Разрешить управление по Wi-Fi', 'Микшер откроет страницу пульта для устройств в вашей сети. ' + (inTauri ? '' : 'Работает в установленном приложении.'), 'none', () => B.setApp({ remoteOn: !a.remoteOn }), !inTauri),
+      switchOf(a.remotePinReq !== false, 'Требовать PIN', 'Без PIN управлять сможет любой человек в вашей сети.', line, () => B.setApp({ remotePinReq: a.remotePinReq === false }))
+    ];
+    const listenRows = [
+      switchOf(a.remoteListen !== false, 'Слушать звук дорожек на телефоне', 'На каждой дорожке в пульте есть кнопка «Слушать». Звук идёт на телефон только пока вы слушаете. Включено по умолчанию.', 'none', () => B.setApp({ remoteListen: a.remoteListen === false }))
+    ];
+    const bufs = [{ id: 'fast', label: 'Быстро' }, { id: 'balance', label: 'Баланс' }, { id: 'safe', label: 'Надёжно' }].map((o) => ({
+      label: o.label, on: (a.remoteBuf || 'balance') === o.id,
+      style: (a.remoteBuf || 'balance') === o.id ? 'background:var(--signal);color:var(--signal-ink);border:1px solid var(--signal)' : 'background:var(--surface);color:var(--fg);border:1px solid var(--line)',
+      pick: () => B.setApp({ remoteBuf: o.id })
+    }));
+    const tabs = [{ id: 'main', label: 'Основные' }, { id: 'remote', label: 'Удалённый пульт' }].map((o) => ({
+      label: o.label, on: tab === o.id,
+      style: tab === o.id ? 'background:var(--signal);color:var(--signal-ink);border:1px solid var(--signal)' : 'background:var(--surface);color:var(--fg);border:1px solid var(--line)',
+      pick: () => { this.setState({ tab: o.id }); if (o.id === 'remote') Bridge.remoteStatus().then((r) => r && this.setState({ rs: r })); }
+    }));
+    const running = !!(rs && rs.running);
+    const clients = rs ? rs.clients : 0, listeners = rs ? rs.listeners : 0;
+    const plural = (n, f) => n + ' ' + (n % 10 === 1 && n % 100 !== 11 ? f[0] : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? f[1] : f[2]));
+    const qrSrc = this.state.qr ? 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(this.state.qr) : '';
+
     const unsaved = !!B.unsaved;
     return {
+      tabMain: tab === 'main', tabRemote: tab === 'remote', tabs, remoteRows, listenRows, bufs,
+      bufOpacity: a.remoteListen === false ? 0.5 : 1,
+      pinOpacity: a.remotePinReq === false ? 0.5 : 1,
+      pinText: a.remotePin || '····',
+      newPin: () => B.newPin(),
+      port: a.remotePort || 8080,
+      portChange: (e) => {
+        const v = parseInt(e.target.value, 10);
+        if (v >= 1024 && v <= 65535) B.setApp({ remotePort: v });
+        else { e.target.value = a.remotePort || 8080; B.notice('Порт должен быть от 1024 до 65535.'); }
+      },
+      remoteRunning: running, remoteUrl: rs && rs.url ? rs.url : '', qrSrc,
+      remoteOff: !running && !(rs && rs.error),
+      offText: a.remoteOn ? 'Запускаю…' : 'Пульт выключен. Включите переключатель «Разрешить управление по Wi-Fi».',
+      remoteError: !!(rs && rs.error), remoteErrorText: rs && rs.error ? 'Пульт не запустился: ' + rs.error + '.' : '',
+      dotColor: clients ? 'var(--ok)' : 'var(--muted)',
+      clientsText: clients ? 'Подключено: ' + plural(clients, ['устройство', 'устройства', 'устройств']) : 'Устройств нет',
+      listenersText: listeners ? 'Слушают звук: ' + listeners : 'Никто не слушает звук',
+      kickAll: () => B.remoteDisconnectAll(),
+      copyUrl: () => {
+        const u = rs && rs.url;
+        if (!u) return;
+        (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject()).then(() => B.notice('Адрес скопирован.')).catch(() => B.notice('Адрес: ' + u));
+      },
       connRows, scopes, scopeOpacity: a.reconnect ? 1 : 0.5,
       saveRows, bgRows, startRows,
       statusText: unsaved ? 'Есть несохранённые изменения' : 'Всё сохранено',

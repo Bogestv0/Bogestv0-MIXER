@@ -2,11 +2,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod obs;
+mod remote;
 
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tauri::{
@@ -75,6 +76,12 @@ fn start_engine(app: &AppHandle, engine: &Engine) {
                         if current_gen(&handle, gen) != gen {
                             return; // это уже старый движок
                         }
+                        // Звук для телефона (удалённый пульт) окну не нужен: пульт забирает его себе.
+                        if let Some(r) = handle.try_state::<RemoteState>() {
+                            if r.0.on_engine_line(&line) {
+                                continue;
+                            }
+                        }
                         let _ = handle.emit("engine-line", line);
                     }
                     if current_gen(&handle, gen) == gen {
@@ -135,8 +142,7 @@ fn engine_info_json(engine: &Engine) -> String {
     format!(r#"{{"boot":{},"running":{}}}"#, engine.boot.load(Ordering::SeqCst), running)
 }
 
-#[tauri::command]
-fn engine_send(line: String, engine: State<Engine>) -> Result<(), String> {
+fn send_line(engine: &Engine, line: &str) -> Result<(), String> {
     let mut guard = engine.stdin.lock().map_err(|e| e.to_string())?;
     match guard.as_mut() {
         Some(stdin) => {
@@ -145,6 +151,59 @@ fn engine_send(line: String, engine: State<Engine>) -> Result<(), String> {
         }
         None => Err("движок не запущен".into()),
     }
+}
+
+#[tauri::command]
+fn engine_send(line: String, engine: State<Engine>) -> Result<(), String> {
+    send_line(&engine, &line)
+}
+
+/// Удалённый пульт (src/remote.rs). Живёт всё время работы программы, сервер включается и выключается настройкой.
+struct RemoteState(remote::Remote);
+
+/// Связь пульта с программой: команды движку, файл настроек, сообщение окну о смене сцены.
+struct RemoteBackend {
+    app: AppHandle,
+}
+
+impl remote::Backend for RemoteBackend {
+    fn send_engine(&self, line: &str) {
+        if let Some(e) = self.app.try_state::<Engine>() {
+            let _ = send_line(&e, line);
+        }
+    }
+    fn settings_json(&self) -> Option<String> {
+        settings_path(&self.app).ok().and_then(|p| std::fs::read_to_string(p).ok())
+    }
+    fn scene_applied(&self, id: &str) {
+        let _ = self.app.emit("remote-scene", id.to_string());
+    }
+}
+
+/// Окно присылает настройки пульта (вкладка «Удалённый пульт»). Сервер включается, выключается или перезапускается сам.
+#[tauri::command]
+fn remote_apply(on: bool, port: u16, pin_required: bool, pin: String, listen: bool, buffer: String, rs: State<RemoteState>) {
+    let digits: String = pin.chars().filter(|c| c.is_ascii_digit()).take(8).collect();
+    let buffer = if ["fast", "balance", "safe"].contains(&buffer.as_str()) { buffer } else { "balance".into() };
+    let port = if port >= 1024 { port } else { 8080 };
+    rs.0.apply(remote::Config { enabled: on, port, require_pin: pin_required, pin: digits, listen, buffer });
+}
+
+/// Состояние пульта для вкладки настроек: работает ли, адрес, сколько устройств, ошибка (например, порт занят).
+#[tauri::command]
+fn remote_status(rs: State<RemoteState>) -> String {
+    rs.0.status().to_string()
+}
+
+/// QR-код со ссылкой на пульт (SVG).
+#[tauri::command]
+fn remote_qr(rs: State<RemoteState>) -> String {
+    rs.0.qr_svg().unwrap_or_default()
+}
+
+#[tauri::command]
+fn remote_disconnect_all(rs: State<RemoteState>) {
+    rs.0.disconnect_all();
 }
 
 #[tauri::command]
@@ -430,7 +489,7 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![engine_send, engine_info, engine_restart, settings_load, settings_save, obs_probe, obs_save_collection, app_prefs, autostart_get, autostart_set, default_dirs, sound_import, sound_remove, reveal_path, list_processes])
+        .invoke_handler(tauri::generate_handler![engine_send, engine_info, engine_restart, settings_load, settings_save, obs_probe, obs_save_collection, app_prefs, autostart_get, autostart_set, default_dirs, sound_import, sound_remove, reveal_path, list_processes, remote_apply, remote_status, remote_qr, remote_disconnect_all])
         .setup(|app| {
             let engine = Engine { stdin: Mutex::new(None), child: Mutex::new(None), boot: AtomicU64::new(0), gen: AtomicU64::new(0) };
             start_engine(app.handle(), &engine);
@@ -441,6 +500,11 @@ fn main() {
             let flag = |key: &str, default: bool| a.get(key).and_then(|v| v.as_bool()).unwrap_or(default);
             let (tray_on, hide_on_close, show_on_start, on_top) = (flag("tray", true), flag("hideOnClose", true), flag("showOnStart", true), flag("onTop", false));
             app.manage(Prefs { hide_on_close: AtomicBool::new(hide_on_close), tray: AtomicBool::new(tray_on) });
+
+            // Удалённый пульт: настройки читаем из файла сами, окно для этого не нужно (программа может стартовать сразу в трей).
+            let rem = remote::Remote::new(Arc::new(RemoteBackend { app: app.handle().clone() }));
+            rem.apply(remote::Config::from_app(&a));
+            app.manage(RemoteState(rem));
 
             let show = MenuItem::with_id(app, "show", "Открыть микшер", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;

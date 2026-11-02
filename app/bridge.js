@@ -34,7 +34,9 @@
   // Настройки программы (экран «Настройки»). Часть из них применяет окно, часть оболочка Tauri (app_prefs в main.rs).
   const APP_DEFAULTS = {
     reconnect: true, scope: 'all', loadOnStart: true, autosave: true,
-    tray: true, hideOnClose: true, showOnStart: true, onTop: false, lockGui: false, autostart: false
+    tray: true, hideOnClose: true, showOnStart: true, onTop: false, lockGui: false, autostart: false,
+    // Удалённый пульт (src-tauri/src/remote.rs): включён ли, порт, PIN, можно ли слушать звук, запас звука на телефоне (fast | balance | safe).
+    remoteOn: false, remotePort: 8080, remotePin: '', remotePinReq: true, remoteListen: true, remoteBuf: 'balance'
   };
   // Саундпад и запись (этап 7). pads[i]: name, key (F1.. или буква), file (путь к копии звука в папке программы).
   // padOut: маска шин, куда играют звуки (A1=1, A2=2, A3=4, B1=8, B2=16). rec: папка, режим и маска шин записи.
@@ -272,6 +274,8 @@
       if (!Object.keys(patch).length) return;
     }
     Object.assign(B.settings.app, patch);
+    // Первое включение пульта: сразу выдаём PIN, чтобы не оставить управление без пароля.
+    if (B.settings.app.remoteOn && B.settings.app.remotePinReq && !B.settings.app.remotePin) B.settings.app.remotePin = randomPin();
     if ('reconnect' in patch || 'scope' in patch) {
       const a = B.settings.app;
       B.setAudio('reconnect', a.reconnect ? (a.scope === 'a1' ? 1 : 2) : 0);
@@ -284,7 +288,28 @@
     if (B.mode !== 'tauri') return;
     const a = B.settings.app;
     T.core.invoke('app_prefs', { tray: !!a.tray, hideOnClose: !!a.hideOnClose, onTop: !!a.onTop }).catch(() => {});
+    T.core.invoke('remote_apply', {
+      on: !!a.remoteOn, port: a.remotePort | 0, pinRequired: a.remotePinReq !== false, pin: String(a.remotePin || ''),
+      listen: a.remoteListen !== false, buffer: String(a.remoteBuf || 'balance')
+    }).catch(() => {});
   }
+  // Случайный PIN из четырёх цифр (криптографический генератор браузера).
+  function randomPin() {
+    const v = new Uint32Array(1);
+    crypto.getRandomValues(v);
+    return String(v[0] % 10000).padStart(4, '0');
+  }
+  B.newPin = () => B.setApp({ remotePin: randomPin() });
+  // Состояние пульта для вкладки настроек: { running, url, port, clients, listeners, error }.
+  B.remoteStatus = async () => {
+    if (B.mode !== 'tauri') return null;
+    try { return JSON.parse(await T.core.invoke('remote_status')); } catch (e) { return null; }
+  };
+  B.remoteQr = async () => {
+    if (B.mode !== 'tauri') return '';
+    try { return await T.core.invoke('remote_qr'); } catch (e) { return ''; }
+  };
+  B.remoteDisconnectAll = () => (B.mode === 'tauri' ? T.core.invoke('remote_disconnect_all').catch(() => {}) : Promise.resolve());
   B.pushAppPrefs = pushAppPrefs;
   // Микрофон: key = g | gate | hpf | comp | ns | amt. Окно сразу показывает новое значение, не дожидаясь ответа движка.
   B.setMic = function (i, key, v) {
@@ -496,6 +521,8 @@
     if (T && T.core && T.event) {
       B.mode = 'tauri';
       await T.event.listen('engine-line', (e) => handle(e.payload));
+      // Телефон переключил сцену: маршруты уже разосланы движку, окну остаётся запомнить, какая сцена активна.
+      await T.event.listen('remote-scene', (e) => { B.settings.active = e.payload; emit('state'); scheduleSave(); });
       try { boot = JSON.parse(await T.core.invoke('engine_info')).boot; } catch (e) { /* ниже */ }
     } else {
       try {
