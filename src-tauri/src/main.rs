@@ -532,6 +532,12 @@ fn main() {
                 })
                 .build(app)?;
             apply_prefs(app.handle(), tray_on, hide_on_close, on_top);
+            // Фон окна под тему Windows (как --bg в интерфейсе): при переходе между экранами не мелькает белый.
+            if let Some(w) = app.get_webview_window("main") {
+                let dark = matches!(w.theme(), Ok(tauri::Theme::Dark));
+                let c = if dark { tauri::window::Color(24, 24, 24, 255) } else { tauri::window::Color(241, 242, 246, 255) };
+                let _ = w.set_background_color(Some(c));
+            }
             // Окно создаётся скрытым (tauri.conf.json). Без значка в трее скрытое окно не открыть, поэтому тогда показываем всегда.
             // Запуск вместе с Windows (--autostart): сразу в трей, окно не мешает. Без трея окно показываем всегда.
             let autostart_launch = std::env::args().any(|a| a == "--autostart");

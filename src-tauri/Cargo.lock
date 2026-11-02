@@ -347,7 +347,7 @@ dependencies = [
 
 [[package]]
 name = "bogestv0-mixer"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "axum",
  "base64 0.22.1",
