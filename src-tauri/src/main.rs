@@ -286,7 +286,7 @@ fn list_processes() -> Result<String, String> {
         let mut seen = std::collections::HashSet::new();
         let mut names: Vec<String> = Vec::new();
         for line in text.lines() {
-            let field = line.split("","").next().unwrap_or("");
+            let field = line.split("\",\"").next().unwrap_or("");
             let name = field.trim_start_matches('"');
             let base = name.strip_suffix(".exe").unwrap_or(name);
             if base.is_empty() || SKIP.contains(&base.to_ascii_lowercase().as_str()) { continue; }
