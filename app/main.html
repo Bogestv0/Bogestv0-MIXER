@@ -158,7 +158,7 @@ class Component extends DCLogic {
     const scene = S.scenes.find((x) => x.id === S.active);
     const firstVirtual = S.strips.findIndex((d, i) => i >= 2 && !d.hidden);   // перед ним отступ между микрофонами и виртуальными
     const strips = S.strips.map((d, i) => d.hidden ? null : ({ d, i })).filter(Boolean).map(({ d, i }) => {
-      const e = st ? st.strips[i] : { g: [-3, -5, -6, -14, -4, -9, -8, -12][i], m: 0, s: 0, r: scene ? scene.routes[i] : 0, src: 0 };
+      const e = st ? st.strips[i] : { g: B.GAIN_DEFAULTS[i], m: 0, s: 0, r: scene ? scene.routes[i] : 0, src: 0 };
       const isMic = i < 2;
       const mic = isMic ? B.micOf(i) : null;
       const ns = isMic ? (mic.ns || 0) : 0;

@@ -24,10 +24,82 @@
       case 'solo': if (e) B.setSolo(i, !e.s); break;
       case 'route': if (e) B.setRoute(i, +el.dataset.k, !((e.r >> +el.dataset.k) & 1)); break;
       case 'scene': B.applyScene(el.dataset.id); break;
-      case 'src': if (e) B.setSrc(i, ['sine', 'noise', 'off'][e.src === 0 ? 0 : e.src === 1 ? 1 : 2]); break;
+      case 'src': openSourceModal(i); break;
       case 'ns': B.setNs(i, +el.dataset.v); break;   // режим шумодава: звук меняется сразу
     }
   });
+
+  /* ---------- окно «Источник»: название вручную или из списка запущенных программ ---------- */
+  function openSourceModal(i) {
+    const strip = B.settings.strips[i];
+    if (!strip) return;
+    const e = st() && st().strips[i];
+    const wrap = document.createElement('div');
+    wrap.id = 'src-modal';
+    wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:60';
+    const box = document.createElement('div');
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-label', 'Источник дорожки «' + strip.name + '»');
+    box.style.cssText = "width:min(420px,92vw);max-height:80vh;display:flex;flex-direction:column;gap:12px;background:var(--surface);color:var(--fg);border-radius:20px;padding:22px;box-shadow:0 10px 40px rgba(0,0,0,.35);font:400 15px/1.4 'Onest',sans-serif";
+    const btn = "min-height:40px;padding:0 14px;border-radius:10px;font:500 13.5px 'Onest',sans-serif;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer;text-align:left";
+    const lab = "font:600 12px 'Onest',sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)";
+    box.innerHTML = `
+      <div style="font:600 18px/1.2 'Unbounded',sans-serif">Источник «${strip.name}»</div>
+      <label style="display:flex;flex-direction:column;gap:6px"><span style="${lab}">Название</span><input id="sm-text" maxlength="40" style="min-height:44px;padding:0 12px;border-radius:12px;border:1px solid var(--line);background:var(--surface-2);color:var(--fg);font:500 15px 'Onest',sans-serif"></label>
+      <div style="display:flex;flex-direction:column;gap:6px;min-height:0">
+        <span style="${lab}">Из запущенных программ</span>
+        <div id="sm-list" style="display:flex;flex-direction:column;gap:5px;overflow:auto;max-height:220px">Ищу программы…</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <span style="${lab}">Тестовый сигнал (вместо программы)</span>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px">
+          <button id="sm-t0" style="min-height:36px;border-radius:9px;font:500 13px 'Onest',sans-serif">Выкл</button>
+          <button id="sm-t1" style="min-height:36px;border-radius:9px;font:500 13px 'Onest',sans-serif">Синус</button>
+          <button id="sm-t2" style="min-height:36px;border-radius:9px;font:500 13px 'Onest',sans-serif">Шум</button>
+        </div>
+        <span style="font-size:12px;color:var(--muted)">Пока сигнал включён, на дорожке вместо названия видно «Тест: …». Выключите его, чтобы снова увидеть название.</span>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end"><button id="sm-cancel" style="${btn};text-align:center">Отмена</button><button id="sm-ok" style="${btn};text-align:center;background:var(--signal);color:var(--signal-ink);border-color:var(--signal)">Сохранить</button></div>`;
+    wrap.append(box);
+    document.body.append(wrap);
+    const q = (id) => box.querySelector(id);
+    q('#sm-text').value = strip.source || '';
+    const on = 'background:var(--signal);color:var(--signal-ink);border:1px solid var(--signal)';
+    const off = 'background:var(--surface);color:var(--fg);border:1px solid var(--line)';
+    const paintTest = () => {
+      const v = (e && e.src) || 0;
+      ['t0', 't1', 't2'].forEach((id, k) => { q('#sm-' + id).style.cssText += ';' + (v === k ? on : off); });
+    };
+    paintTest();
+    [['t0', 'off'], ['t1', 'sine'], ['t2', 'noise']].forEach(([id, cmd]) => {
+      q('#sm-' + id).onclick = () => { B.setSrc(i, cmd); if (st() && st().strips[i]) st().strips[i].src = { off: 2, sine: 0, noise: 1 }[cmd]; paintTest(); };
+    });
+    const close = () => { document.removeEventListener('keydown', onKey, true); wrap.remove(); rerender(); };
+    const onKey = (ev) => { if (ev.key === 'Escape') close(); };
+    document.addEventListener('keydown', onKey, true);
+    q('#sm-cancel').onclick = close;
+    wrap.addEventListener('pointerdown', (ev) => { if (ev.target === wrap) close(); });
+    q('#sm-ok').onclick = () => {
+      const v = q('#sm-text').value.trim().slice(0, 40);
+      strip.source = v || B.STRIP_DEFAULTS[i].source;
+      B.saveSettings();
+      close();
+    };
+    B.listProcesses().then((names) => {
+      const list = q('#sm-list');
+      if (!wrap.isConnected) return;
+      if (!names.length) { list.textContent = 'Список недоступен. Впишите название вручную.'; return; }
+      list.innerHTML = '';
+      names.forEach((name) => {
+        const b = document.createElement('button');
+        b.textContent = name;
+        b.style.cssText = btn;
+        b.onclick = () => { q('#sm-text').value = name; };
+        list.append(b);
+      });
+    }).catch(() => { if (wrap.isConnected) q('#sm-list').textContent = 'Список недоступен. Впишите название вручную.'; });
+    q('#sm-text').focus();
+  }
 
   /* ---------- фейдеры ---------- */
   function flush() {

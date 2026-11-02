@@ -11,17 +11,17 @@
     { name: 'Игры', tag: 'V1', source: 'Все игры' },
     { name: 'Музыка', tag: 'V2', source: 'Spotify' },
     { name: 'Discord', tag: 'V3', source: 'Discord' },
-    { name: 'Браузер', tag: 'V4', source: 'Chrome, YouTube' },
-    { name: 'Донаты', tag: 'V5', source: 'Оповещения о донатах' },
+    { name: 'Донаты', tag: 'V4', source: 'Оповещения о донатах' },
+    { name: 'Браузер', tag: 'V5', source: 'Chrome, YouTube' },
     { name: 'Браузер 2', tag: 'V6', source: 'Firefox' }
   ];
   // Маски маршрутов: A1=1, A2=2, A3=4, B1=8, B2=16.
   const SCENES_DEFAULT = [
-    { id: 'play', name: 'Играю и стримлю', desc: 'Игры и музыка в наушники и на стрим; Discord только в наушники.', routes: [24, 24, 10, 10, 2, 2, 10, 2] },
+    { id: 'play', name: 'Играю и стримлю', desc: 'Игры и музыка в наушники и на стрим; Discord только в наушники.', routes: [24, 24, 10, 10, 2, 10, 2, 2] },
     { id: 'call', name: 'Звонок', desc: 'Микрофоны на звонок, всё остальное только в наушники.', routes: [24, 24, 2, 2, 2, 2, 2, 2] },
     { id: 'spk', name: 'Всё в колонки', desc: 'Все программы в колонки, микрофоны на стрим и звонки.', routes: [24, 24, 1, 1, 1, 1, 1, 1] }
   ];
-  const GAIN_DEFAULTS = [-3, -5, -6, -14, -4, -9, -8, -12];
+  const GAIN_DEFAULTS = [-3, -5, -6, -14, -4, -8, -9, -12];  // Донаты и Браузер поменялись местами (см. STRIP_DEFAULTS), громкость по умолчанию идёт за названием
   // Микрофоны (этап 4). g: усиление 0..30 дБ; gate: порог гейта −80..−20 (−80 = выкл); hpf: фильтр низких 20..300 Гц (20 = выкл);
   // comp: степень компрессора 1..10 (1 = выкл); ns: шумодав 0 выкл / 1 мягкое / 2 сильное / 3 максимум; amt: сила шумодава, %.
   const NS_AMT = [0, 50, 70, 100];     // сила по умолчанию для каждого режима
@@ -52,7 +52,7 @@
     meters: null,
     lastError: '',
     settings: null,
-    SLOTS, PADS, STRIP_DEFAULTS, MIC_DEFAULTS, NS_AMT, AUDIO_DEFAULTS, APP_DEFAULTS,
+    SLOTS, PADS, STRIP_DEFAULTS, GAIN_DEFAULTS, MIC_DEFAULTS, NS_AMT, AUDIO_DEFAULTS, APP_DEFAULTS,
     on(fn) { listeners.add(fn); return () => listeners.delete(fn); }
   });
 
@@ -222,6 +222,16 @@
   B.setMute = (i, on) => B.send(`set strip ${i} mute ${on ? 1 : 0}`);
   B.setSolo = (i, on) => B.send(`set strip ${i} solo ${on ? 1 : 0}`);
   B.setSrc = (i, name) => B.send(`set strip ${i} src ${name}`);
+  // Список запущенных программ для окна «Источник» (только для подписи дорожки, звук он не переключает).
+  B.listProcesses = async function () {
+    if (B.mode === 'tauri') {
+      try { return JSON.parse(await T.core.invoke('list_processes')); } catch (e) { return []; }
+    }
+    if (B.mode === 'dev') {
+      try { const r = await fetch('/processes'); return r.ok ? await r.json() : []; } catch (e) { return []; }
+    }
+    return [];
+  };
   // Шины: 0..2 = A1..A3, 3..4 = B1, B2. Фейдер −48…+12 дБ.
   B.setBusGain = (k, db) => B.send(`set bus ${k} gain ${db}`);
   B.setBusMute = (k, on) => B.send(`set bus ${k} mute ${on ? 1 : 0}`);
