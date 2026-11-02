@@ -59,7 +59,7 @@ constexpr int kSlots = 7;
 constexpr int kMics = 2;
 constexpr size_t kMaxBlock = 4096;  // самый большой блок за один проход
 static const char* kSlotNames[kSlots] = {"hw1", "hw2", "a1", "a2", "a3", "b1", "b2"};
-static const char* kEngineVersion = "0.6.2";
+static const char* kEngineVersion = "0.6.3";
 
 // Кольцо «один пишет, один читает» для стерео-кадров. Связывает потоки разных устройств.
 struct Ring {
@@ -198,6 +198,7 @@ public:
         listen_ring_.init(16384);
         for (int s = 0; s < kSlots; ++s) { roles_[s] = {this, s}; ok_[s] = false; }
         acc_.assign(kBuses, std::vector<float>(kMaxBlock * 2));
+        for (int j = 0; j < kShmTapRings; ++j) { tap_src_[j] = kTapOwn; tap_acc_[j].assign(kMaxBlock * 2, 0.0f); }
         tmp_.assign(kMaxBlock * 2, 0.0f);
         refresh_devices();
     }
@@ -373,7 +374,9 @@ public:
         o << "],\"buf\":" << buf_frames_.load() << ",\"rc\":" << reconnect_.load() << "},\"info\":{";
         for (int s = 0; s < kSlots; ++s)
             o << (s ? "," : "") << "\"" << kSlotNames[s] << "\":" << (dev_[s] && ok_[s] ? "[" + std::to_string(info_[s].rate) + "," + std::to_string(info_[s].ch) + "," + std::to_string(info_[s].bits) + "]" : std::string("null"));
-        o << "},\"dev\":{";
+        o << "},\"cab\":[";
+        for (int j = 0; j < kShmTapRings; ++j) o << (j ? "," : "") << tap_src_[j].load(std::memory_order_relaxed);
+        o << "],\"dev\":{";
         for (int s = 0; s < kSlots; ++s) o << (s ? "," : "") << "\"" << kSlotNames[s] << "\":\"" << json_escape(names_[s]) << "\"";
         o << "},\"ok\":{";
         for (int s = 0; s < kSlots; ++s) o << (s ? "," : "") << "\"" << kSlotNames[s] << "\":" << (ok_[s] ? 1 : 0);
@@ -596,6 +599,12 @@ public:
                     }
                 } else return "звук: неизвестное действие " + what;
             }
+        } else if (b == "out") {
+            // set out <дорожка 0..5> src <маска 0..63>: что слышит программа, которая пишет с «Bogestv0 <Дорожка> Out».
+            int t, v; std::string what;
+            if (!(in >> t >> what) || t < 0 || t >= kShmTapRings) return "кабель: номер дорожки 0..5";
+            if (what != "src" || !(in >> v)) return "кабель: set out N src МАСКА";
+            tap_src_[t] = v & 63;
         } else if (b == "pads") {
             std::string what; in >> what;
             if (what == "gain") { float v; if (!(in >> v) || !std::isfinite(v)) return "gain: нужно число"; pad_gain_ = std::max(-48.0f, std::min(12.0f, v)); }
@@ -672,6 +681,10 @@ private:
     std::chrono::steady_clock::time_point retry_at_[kSlots], rebuild_at_;
     int fails_[kSlots] = {}, miss_[kSlots] = {}, rebuild_fails_ = 0;
     std::vector<std::vector<float>> acc_;
+    // «Кабели» (Out 1..6): что уходит в «Bogestv0 <Дорожка> Out». Маска: бит 0..4 = шины A1 A2 A3 B1 B2, бит 5 = чистый звук самой дорожки (по умолчанию).
+    static constexpr int kTapOwn = 32;
+    std::atomic<int> tap_src_[kShmTapRings];
+    std::vector<float> tap_acc_[kShmTapRings];
     std::vector<float> tmp_;
     std::unique_ptr<Shm> shm_;
     std::string shm_err_;
@@ -987,6 +1000,7 @@ private:
         for (size_t done = 0; done < frames;) {
             const size_t n = std::min(kMaxBlock, frames - done);
             for (int k = 0; k < kBuses; ++k) std::memset(acc_[k].data(), 0, n * 2 * sizeof(float));
+            for (int j = 0; j < kShmTapRings; ++j) std::memset(tap_acc_[j].data(), 0, n * 2 * sizeof(float));
             for (int i = 0; i < kStrips; ++i) {
                 Strip& s = strips[i];
                 float* t = tmp_.data();
@@ -1009,8 +1023,10 @@ private:
                     generate(s, i, t, n);
                 }
                 // Выход дорожки для OBS («Bogestv0 <Дорожка> Out»): чистый звук дорожки V1..V6 до фейдера, Mute и Solo.
-                if (shm_ && i >= 2 && i - 2 < kShmTapRings && shm_out_[kShmBusRings + (i - 2)].active())
-                    shm_out_[kShmBusRings + (i - 2)].push(t, static_cast<uint32_t>(n));
+                if (shm_ && i >= 2 && i - 2 < kShmTapRings && (tap_src_[i - 2].load(std::memory_order_relaxed) & kTapOwn) && shm_out_[kShmBusRings + (i - 2)].active()) {
+                    float* ta = tap_acc_[i - 2].data();
+                    for (size_t j = 0; j < n * 2; ++j) ta[j] += t[j];   // накопитель кабеля, уйдёт в кольцо после шин
+                }
                 s.eq.process(t, n);   // бас и ВЧ дорожки (после выхода для OBS: туда идёт чистый звук)
                 const bool silent = s.mute.load(std::memory_order_relaxed) || (any_solo && !s.solo.load(std::memory_order_relaxed));
                 const float target = silent ? 0.0f : gain_from_db(s.gain_db.load(std::memory_order_relaxed));
@@ -1042,6 +1058,23 @@ private:
                 else if (ok_[2 + k]) b.ring.push(a, n);
                 if (shm_ && k >= kBuses - kShmBusRings && shm_out_[k - (kBuses - kShmBusRings)].active())
                     shm_out_[k - (kBuses - kShmBusRings)].push(a, static_cast<uint32_t>(n));   // B1 / B2 -> «Bogestv0 Mix B1/B2 Out»
+                if (shm_) {
+                    // Кабели: шина k добавляется в «Out» тех дорожек, у которых она отмечена.
+                    for (int j = 0; j < kShmTapRings; ++j) {
+                        if (!(tap_src_[j].load(std::memory_order_relaxed) & (1 << k)) || !shm_out_[kShmBusRings + j].active()) continue;
+                        float* ta = tap_acc_[j].data();
+                        for (size_t q = 0; q < n * 2; ++q) ta[q] += a[q];
+                    }
+                }
+            }
+            if (shm_) {
+                // Кабели: готовый микс (с ограничением по ±1) уходит драйверу. Пишем и тишину, чтобы читающий не терял такт.
+                for (int j = 0; j < kShmTapRings; ++j) {
+                    if (!shm_out_[kShmBusRings + j].active()) continue;
+                    float* ta = tap_acc_[j].data();
+                    for (size_t q = 0; q < n * 2; ++q) ta[q] = std::max(-1.0f, std::min(1.0f, ta[q]));
+                    shm_out_[kShmBusRings + j].push(ta, static_cast<uint32_t>(n));
+                }
             }
             if (shm_) shm_->header()->engine_beat.fetch_add(1, std::memory_order_relaxed);
             done += n;

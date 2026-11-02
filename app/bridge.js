@@ -44,6 +44,11 @@
   const PAD_DEFAULTS = () => Array.from({ length: PADS }, () => ({ name: '', key: '', file: '' }));
   const PAD_OUT_DEFAULT = 10;
   const REC_DEFAULTS = { dir: '', mode: 'separate', mask: 8 };
+  // «Кабели»: дорожки, у которых «Bogestv0 <Дорожка> Out» умеет отдавать не только свой звук, но и шины. t — номер Out (дорожка V1 = 0).
+  // Маска источников: бит 0..4 = A1 A2 A3 B1 B2, бит 5 (32) = чистый звук самой дорожки (так было всегда и остаётся по умолчанию).
+  const CABLES = [{ t: 0, name: 'Games' }, { t: 1, name: 'Music' }, { t: 3, name: 'Browser 1' }];
+  const CABLE_OWN = 32;
+  const CABLES_DEFAULT = () => [CABLE_OWN, CABLE_OWN, CABLE_OWN, CABLE_OWN, CABLE_OWN, CABLE_OWN];
   const MIC_CMD = { g: 'gain', gate: 'gate', hpf: 'hpf', comp: 'comp', ns: 'ns', amt: 'nsamt' };
 
   const B = (window.Bridge = {
@@ -54,6 +59,7 @@
     meters: null,
     lastError: '',
     settings: null,
+    CABLES, CABLE_OWN,
     SLOTS, PADS, STRIP_DEFAULTS, GAIN_DEFAULTS, MIC_DEFAULTS, NS_AMT, AUDIO_DEFAULTS, APP_DEFAULTS,
     on(fn) { listeners.add(fn); return () => listeners.delete(fn); }
   });
@@ -74,11 +80,29 @@
       pads: PAD_DEFAULTS(),
       padOut: PAD_OUT_DEFAULT,
       padGain: 0,
+      cables: CABLES_DEFAULT(),
       rec: { ...REC_DEFAULTS }
     };
   }
   B.defaults = defaults;
   B.settings = defaults();
+
+  /* ---------- кэш между экранами ----------
+     Каждый экран — отдельная страница, при переходе окно загружается заново. Чтобы не показывать «Движок запускается…»
+     и пустые индикаторы, последнее состояние движка кладём в sessionStorage и поднимаем сразу при загрузке страницы.
+     Кэш живёт, пока открыто окно программы, и сбрасывается при перезапуске или остановке движка. */
+  const CACHE_KEY = 'bogestv0.cache';
+  function clearCache() { try { sessionStorage.removeItem(CACHE_KEY); } catch (e) { /* ok */ } }
+  try {
+    const c = JSON.parse(sessionStorage.getItem(CACHE_KEY) || 'null');
+    if (c && c.state) { B.state = c.state; B.connected = true; B.fromCache = true; if (c.devices) B.devices = c.devices; }
+  } catch (e) { /* без кэша начнём с нуля */ }
+  window.addEventListener('pagehide', () => {
+    try {
+      if (B.connected && B.state) sessionStorage.setItem(CACHE_KEY, JSON.stringify({ state: B.state, devices: B.devices }));
+      else clearCache();
+    } catch (e) { /* ok */ }
+  });
 
   /* ---------- сообщения движка ---------- */
   function handle(line) {
@@ -91,7 +115,7 @@
       case 'm': B.meters = m; emit('meters'); break;
       case 'recs': B.recs = m; emit('recs'); break;
       case 'err': B.lastError = m.msg; emit('err'); break;
-      case 'exit': B.connected = false; B.state = null; B.lastError = 'Движок остановился'; emit('conn'); emit('err'); autoRestart(); break;
+      case 'exit': clearCache(); B.connected = false; B.state = null; B.lastError = 'Движок остановился'; emit('conn'); emit('err'); autoRestart(); break;
     }
   }
 
@@ -130,6 +154,7 @@
         B.settings.strips = d.strips.map((x, i) => ({ ...x, ...((saved.strips || [])[i] || {}) }));
         B.settings.pads = d.pads.map((x, i) => ({ ...x, ...((saved.pads || [])[i] || {}) }));
         B.settings.rec = { ...d.rec, ...(saved.rec || {}) };
+        B.settings.cables = d.cables.map((x, i) => (saved.cables && Number.isInteger(saved.cables[i]) ? saved.cables[i] & 63 : x));
       } catch (e) { B.settings = defaults(); }
     }
   }
@@ -144,6 +169,7 @@
     };
     if (st.aud) B.settings.audio = { lim: st.aud.lim, dly: st.aud.dly.slice(), buf: st.aud.buf, rc: st.aud.rc };
     B.settings.devices = st.dev;
+    if (Array.isArray(st.cab)) B.settings.cables = st.cab.slice();
     if (st.pads) { B.settings.padOut = st.pads.r; B.settings.padGain = st.pads.g; }
     if (st.rec) B.settings.rec = { dir: st.rec.dir || B.settings.rec.dir, mode: st.rec.mixed ? 'mixed' : 'separate', mask: st.rec.mask };
     if (st.mic) B.settings.mics = st.mic.map((m) => ({ g: m.g, gate: m.gate, hpf: m.hpf, comp: m.comp, ns: m.ns, amt: m.amt }));
@@ -182,6 +208,7 @@
     restarting = true;
     try {
       if (!auto) await B.saveSettings();   // последние движения фейдеров должны успеть записаться
+      clearCache();
       B.applied = false; B.connected = false; B.state = null; B.meters = null;
       emit('conn');
       const info = JSON.parse(await T.core.invoke('engine_restart'));
@@ -374,6 +401,21 @@
     if ('dir' in patch) B.send(`set rec dir ${patch.dir}`);
     keep();
   };
+  // Кабель дорожки t: что слышит программа, пишущая с «Bogestv0 <Дорожка> Out». Окно сразу показывает новое значение.
+  B.cableOf = (t) => {
+    const st = B.state;
+    const v = st && Array.isArray(st.cab) ? st.cab[t] : B.settings.cables && B.settings.cables[t];
+    return Number.isInteger(v) ? v : CABLE_OWN;
+  };
+  B.setCable = function (t, mask) {
+    mask &= 63;
+    if (!Array.isArray(B.settings.cables)) B.settings.cables = CABLES_DEFAULT();
+    B.settings.cables[t] = mask;
+    if (B.state && Array.isArray(B.state.cab)) B.state.cab[t] = mask;
+    B.send(`set out ${t} src ${mask}`);
+    emit('state');
+    B.saveSettings();   // выбор человека, а не поток движка: пишем сразу
+  };
   B.recStart = () => B.send('rec start');
   B.recStop = () => B.send('rec stop');
   B.recList = () => B.send('recs');
@@ -410,6 +452,7 @@
   // Звуки кнопок, куда они играют и настройки записи: возвращаем движку при каждом его запуске.
   function sendPadsRec() {
     const s = B.settings;
+    (s.cables || CABLES_DEFAULT()).forEach((m, t) => B.send(`set out ${t} src ${m & 63}`));
     B.send(`set pads gain ${s.padGain || 0}`);
     for (let k = 0; k < 5; k++) B.send(`set pads route ${k} ${(s.padOut >> k) & 1}`);
     s.pads.forEach((p, i) => { if (p.file) B.send(`set pad ${i} file ${p.file}`); });
@@ -468,6 +511,7 @@
     B.settings.strips = defaults().strips.map((x, i) => ({ ...x, ...((saved.strips || [])[i] || {}) }));
     B.settings.pads = defaults().pads.map((x, i) => ({ ...x, ...((saved.pads || [])[i] || {}) }));
     B.settings.rec = { ...REC_DEFAULTS, ...(saved.rec || {}) };
+    B.settings.cables = CABLES_DEFAULT().map((x, i) => (saved.cables && Number.isInteger(saved.cables[i]) ? saved.cables[i] & 63 : x));
     B.settings.devices = saved.devices || keepDevices;
     applySaved();
     pushAppPrefs();
@@ -547,10 +591,13 @@
     } catch (e) { /* папку выберет человек */ }
     emit('conn');
     if (B.mode === 'none') return;
-    B.send('devices');
-    B.send('get');
     let applied = null;
     try { applied = localStorage.getItem('bogestv0.boot'); } catch (e) { /* ok */ }
+    // Список устройств заново опрашивает WASAPI и на время держит замок движка, поэтому просим его только когда он нужен:
+    // нет кэша, это новый запуск движка или открыт экран «Устройства» / «Выходы». Об изменениях движок сообщает сам.
+    const haveDev = B.devices && ((B.devices.cap || []).length || (B.devices.play || []).length);
+    if (!haveDev || String(boot) !== applied || /(devices|outputs)\.html$/.test(location.pathname)) B.send('devices');
+    B.send('get');
     if (String(boot) !== applied) {
       try { localStorage.setItem('bogestv0.boot', String(boot)); } catch (e) { /* ok */ }
       applySaved();

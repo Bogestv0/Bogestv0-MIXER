@@ -12,6 +12,8 @@ body{margin:0;background:var(--bg)}
 button{font-family:inherit;cursor:pointer}
 button:focus-visible,a:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
 html,body{height:100%;overflow:hidden}
+@view-transition{navigation:auto}
+::view-transition-group(root){animation-duration:.14s}
 </style>
 <script src="dc.js"></script>
 <script src="bridge.js"></script>

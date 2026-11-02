@@ -12,6 +12,8 @@ body{margin:0;background:var(--bg)}
 button{font-family:inherit;cursor:pointer}
 button:focus-visible,a:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
 html,body{height:100%;overflow:hidden}
+@view-transition{navigation:auto}
+::view-transition-group(root){animation-duration:.14s}
 </style>
 <script src="dc.js"></script>
 <script src="bridge.js"></script>
@@ -195,6 +197,27 @@ html,body{height:100%;overflow:hidden}
         </div>
 
         <div style="flex:0 0 auto;background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px">
+          <h2 style="margin:0;font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Кабели: что отдаёт «Out»</h2>
+          <div style="font-size:13px;color:var(--muted);line-height:1.5">Приём работает всегда: программа играет в «Bogestv0 … In», звук идёт на дорожку. Отдача: выберите, что услышит программа, которая записывает с «Bogestv0 … Out» (OBS, Discord, запись экрана). «Дорожка» — чистый звук дорожки, как раньше; A1–B2 — готовый микс шины после фейдера и лимитера. Можно выбрать несколько, звук сложится.</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <sc-for list="{{cables}}" as="c">
+              <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 12px;border-radius:14px;background:var(--surface-2)">
+                <span style="flex:0 0 46px;text-align:center;font:600 12.5px var(--f-mono);padding:4px 0;border-radius:99px;{{c.tagStyle}}">{{c.tag}}</span>
+                <div style="flex:1 1 180px;min-width:0;display:flex;flex-direction:column">
+                  <span style="font-weight:600;line-height:1.3">Bogestv0 {{c.name}} In / Out</span>
+                  <span style="font-size:11.5px;color:var(--muted)">{{c.state}}</span>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px">
+                  <sc-for list="{{c.chips}}" as="x">
+                    <button data-act="cable" onClick="{{x.toggle}}" aria-pressed="{{x.on}}" title="{{x.title}}" style="min-height:34px;padding:0 12px;border-radius:10px;font:500 13px var(--f-body);{{x.style}}">{{x.label}}</button>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="flex:0 0 auto;background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px">
           <div style="display:flex;justify-content:space-between;align-items:center">
             <h2 style="margin:0;font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Виртуальные устройства Bogestv0</h2>
             <span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 10px;border-radius:99px;{{drvPill}}">{{drvText}}</span>
@@ -287,7 +310,8 @@ class Component extends DCLogic {
     );
     const isHp = (n) => /науш|headphone|headset|hands-free|гарнитур/i.test(n);
 
-    const devices = list.map((d) => {
+    // «Bogestv0 … In/Out» — это сами кабели микшера: на слоты их не назначают (звук пошёл бы по кругу), ими управляет карточка «Кабели».
+    const devices = list.filter((d) => !/Bogestv0/i.test(d.name)).map((d) => {
       const keys = d.kind === 'in' ? ['hw1', 'hw2'] : ['a1', 'a2', 'a3', 'b1', 'b2'];
       const used = keys.filter((k) => dev[k] === d.name);
       return {
@@ -450,7 +474,26 @@ class Component extends DCLogic {
         + ', самая долгая пауза ' + (ms2.gap / 1000).toFixed(1) + ' мс, самая долгая обработка блока ' + (ms2.proc / 1000).toFixed(2) + ' мс, перезапусков ' + ms2.rb;
     }
     const used = Object.keys(dev).filter((k) => dev[k]).length;
-    return { obs, devices, slots, virtuals, drvText, drvPill, virtualsNote, diagText, foundCount: list.length, usedCount: used, refresh: () => B.send('devices') };
+    const BUS_NAMES = ['A1', 'A2', 'A3', 'B1', 'B2'];
+    const cables = B.CABLES.map((c) => {
+      const mask = B.cableOf(c.t);
+      const items = [{ bit: B.CABLE_OWN, label: 'Дорожка', title: 'Чистый звук дорожки до фейдера и Mute (как раньше)' }]
+        .concat(BUS_NAMES.map((n, k) => ({ bit: 1 << k, label: n, title: 'Микс шины ' + n + ' после фейдера и лимитера' })));
+      const chips = items.map((x) => {
+        const on = !!(mask & x.bit);
+        return {
+          label: x.label, title: x.title, on,
+          style: on ? 'background:var(--signal);color:var(--signal-ink);border:1px solid var(--signal)' : 'background:none;color:var(--fg);border:1px solid var(--line)',
+          toggle: () => B.setCable(c.t, on ? (mask & ~x.bit) : (mask | x.bit))
+        };
+      });
+      const on = items.filter((x) => mask & x.bit).map((x) => x.label);
+      const reading = openOut(2 + c.t);
+      let state = !on.length ? 'В Out тишина' : (mask === B.CABLE_OWN ? 'В Out: чистый звук дорожки (как раньше)' : 'В Out: ' + on.join(' + '));
+      if (reading) state += ' · читает программа';
+      return { tag: 'V' + (c.t + 1), name: c.name, state, chips, tagStyle: vSig };
+    });
+    return { obs, devices, slots, cables, virtuals, drvText, drvPill, virtualsNote, diagText, foundCount: list.length, usedCount: used, refresh: () => B.send('devices') };
   }
 }
 </script>

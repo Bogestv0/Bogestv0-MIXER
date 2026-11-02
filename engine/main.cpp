@@ -652,6 +652,28 @@ static int selftest_driver_mixer() {
                 for (uint32_t f = 0; f < got; ++f) if (std::fabs(o[f * 2] - 0.5f) < 1e-3f && std::fabs(o[f * 2 + 1] + 0.25f) < 1e-3f) heard_tap = true;
             }
             check(heard_tap, "выход дорожки Out 2 отдаёт звук V2 до фейдера и Mute (L=0.5, R=-0.25)");
+            {   // «Кабель»: Out 2 может отдавать шины вместо чистого звука дорожки (set out 1 src МАСКА: бит 0..4 = A1..B2, бит 5 = дорожка).
+                auto tap_peak = [&]() {
+                    tap2.discard();
+                    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+                    float pk = 0.0f;
+                    for (uint32_t got = tap2.pop(o.data(), 480); got > 0; got = tap2.pop(o.data(), 480))
+                        for (uint32_t f = 0; f < got * 2; ++f) pk = std::max(pk, std::fabs(o[f]));
+                    return pk;
+                };
+                check(m.state_json().find("\"cab\":[32,32,32,32,32,32]") != std::string::npos, "кабели по умолчанию отдают чистый звук дорожки (маска 32)");
+                check(!m.command("set out 1 src 8").empty() == false && m.state_json().find("\"cab\":[32,8,32,32,32,32]") != std::string::npos, "кабель Music переключён на шину B1");
+                check(tap_peak() < 1e-3f, "кабель с шиной B1: дорожка заглушена, шина B1 пуста, в Out тишина");
+                m.command("set strip 3 mute 0");
+                check(std::fabs(tap_peak() - 0.5f) < 1e-3f, "кабель с шиной B1: звук дорожки пришёл через шину (пик 0.5)");
+                m.command("set out 1 src 0");
+                check(tap_peak() < 1e-3f, "кабель без источников молчит");
+                m.command("set out 1 src 40");   // шина B1 + собственный звук дорожки: сумма 1.0 (не выше предела)
+                check(std::fabs(tap_peak() - 1.0f) < 1e-3f, "дорожка + шина B1 складываются и ограничиваются на ±1");
+                check(!m.command("set out 9 src 1").empty() && !m.command("set out 1 foo 1").empty(), "неверный кабель и свойство дают ошибку");
+                m.command("set out 1 src 32");
+                m.command("set strip 3 mute 1");
+            }
             m.command("set strip 3 mute 0");
             check(drv->header()->engine_beat.load() > 0, "движок считает блоки: engine_beat растёт");
             m.poll_driver();
