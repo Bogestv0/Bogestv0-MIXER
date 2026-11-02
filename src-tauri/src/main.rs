@@ -260,6 +260,51 @@ fn sound_remove(app: AppHandle, path: String) -> Result<(), String> {
     std::fs::remove_file(p).map_err(|e| e.to_string())
 }
 
+/// Имена запущенных программ со своим окном, для подписи дорожки в окне «Источник» (список, не звук).
+/// Используется `tasklist`, доступный в любой Windows без дополнительных прав.
+#[tauri::command]
+fn list_processes() -> Result<String, String> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let out = Command::new("tasklist")
+            .args(["/fo", "csv", "/nh"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .map_err(|e| e.to_string())?;
+        let text = String::from_utf8_lossy(&out.stdout);
+        // Процессы без своего окна (службы, вспомогательные) неинтересны для подписи дорожки.
+        const SKIP: &[&str] = &[
+            "system", "registry", "smss", "csrss", "wininit", "services", "lsass", "svchost",
+            "winlogon", "fontdrvhost", "dwm", "conhost", "ctfmon", "explorer", "taskhostw",
+            "runtimebroker", "searchapp", "searchindexer", "shellexperiencehost",
+            "startmenuexperiencehost", "textinputhost", "applicationframehost", "sihost",
+            "securityhealthservice", "securityhealthsystray", "wmiprvse", "spoolsv", "dllhost",
+            "bogestv0", "engine", "audiodg",
+        ];
+        let mut seen = std::collections::HashSet::new();
+        let mut names: Vec<String> = Vec::new();
+        for line in text.lines() {
+            let field = line.split("","").next().unwrap_or("");
+            let name = field.trim_start_matches('"');
+            let base = name.strip_suffix(".exe").unwrap_or(name);
+            if base.is_empty() || SKIP.contains(&base.to_ascii_lowercase().as_str()) { continue; }
+            let pretty = base.replace(['-', '_'], " ");
+            let mut c = pretty.chars();
+            let pretty = match c.next() { Some(f) => f.to_uppercase().collect::<String>() + c.as_str(), None => pretty };
+            if seen.insert(pretty.to_ascii_lowercase()) { names.push(pretty); }
+        }
+        names.sort();
+        names.truncate(60);
+        Ok(serde_json::to_string(&names).map_err(|e| e.to_string())?)
+    }
+    #[cfg(not(windows))]
+    {
+        Ok("[]".to_string())
+    }
+}
+
 /// Показывает файл (или папку) в проводнике.
 #[tauri::command]
 fn reveal_path(path: String) -> Result<(), String> {
@@ -385,7 +430,7 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![engine_send, engine_info, engine_restart, settings_load, settings_save, obs_probe, obs_save_collection, app_prefs, autostart_get, autostart_set, default_dirs, sound_import, sound_remove, reveal_path])
+        .invoke_handler(tauri::generate_handler![engine_send, engine_info, engine_restart, settings_load, settings_save, obs_probe, obs_save_collection, app_prefs, autostart_get, autostart_set, default_dirs, sound_import, sound_remove, reveal_path, list_processes])
         .setup(|app| {
             let engine = Engine { stdin: Mutex::new(None), child: Mutex::new(None), boot: AtomicU64::new(0), gen: AtomicU64::new(0) };
             start_engine(app.handle(), &engine);

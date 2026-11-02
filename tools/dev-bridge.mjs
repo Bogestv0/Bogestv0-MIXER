@@ -70,6 +70,10 @@ http.createServer((req, res) => {
     return;
   }
   if (url.pathname === '/reveal') { res.end('ok'); return; }
+  if (url.pathname === '/processes') {
+    res.setHeader('content-type', 'application/json');
+    return res.end(JSON.stringify(['Discord', 'Chrome', 'Spotify', 'OBS Studio', 'VALORANT', 'Steam', 'Firefox', 'Telegram']));
+  }
   const file = path.join(root, url.pathname === '/' ? 'main.html' : url.pathname);
   if (!file.startsWith(root) || !fs.existsSync(file)) { res.statusCode = 404; return res.end('not found'); }
   res.setHeader('content-type', types[path.extname(file)] || 'application/octet-stream');
