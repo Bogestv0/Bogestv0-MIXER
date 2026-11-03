@@ -1,6 +1,7 @@
 ﻿; Хуки установщика Bogestv0 MIXER (Tauri NSIS, bundle.windows.nsis.installerHooks).
 ; Драйвер виртуальных устройств ставится вместе с программой: пользователь ничего не запускает в консоли.
 ; Файлы драйвера кладёт в установщик сборка релиза (папка src-tauri/driver, см. .github/workflows/release.yml).
+; Драйвер ставится, только если человек выбрал это на странице «Звуковые драйверы» (по умолчанию да; ключи установщика /DRIVER и /NODRIVER).
 ; Ошибка драйвера не отменяет установку программы: микшер работает и без него (тогда нет только виртуальных устройств).
 ; Коды install.ps1: 0 готово · 3010 нужна перезагрузка · 20 тестовый режим не включился (Secure Boot) · иначе ошибка.
 
@@ -10,6 +11,9 @@
 !macro NSIS_HOOK_POSTINSTALL
   Push $0
   Push $1
+  ; Выбор со страницы «Звуковые драйверы» ($InstallDriver задаёт installer.nsi). Запоминаем его: тихие обновления (/P) его не меняют.
+  WriteRegDWORD SHCTX "${MANUPRODUCTKEY}" "InstallDriver" $InstallDriver
+  StrCmp $InstallDriver "0" bogestv0_drv_done
   ; Установщик 32-битный: на 64-битной Windows берём 64-битный PowerShell через Sysnative (иначе нет bcdedit и нельзя ставить драйвер).
   StrCpy $1 "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
   IfFileExists "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" 0 +2
