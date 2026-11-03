@@ -48,6 +48,31 @@ ok(Obs.plan(caps.map((c) => ({ name: c.name })), names).every((r) => !r.ok && /�
 }
 ok(Obs.plan(caps, names).filter((r) => r.ok).every((r) => caps.some((c) => c.id === r.deviceId && c.name === r.deviceName)), 'у каждой строки свой идентификатор устройства');
 
+// 2б. режим «In»: дорожки берутся из своего устройства воспроизведения (как «Aux Input» у Voicemeeter)
+{
+  const play = [
+    { name: 'Динамики (Realtek)', id: '{0.0.0.00000000}.{spk}' },
+    { name: 'Bogestv0 Games In (Bogestv0 Virtual Audio)', id: '{0.0.0.00000000}.{gi}' },
+    { name: 'Bogestv0 Music In (Bogestv0 Virtual Audio)', id: '{0.0.0.00000000}.{mi}' }
+  ];
+  const r = Obs.plan(caps, names, play, 'in');
+  ok(r[0].kind === 'wasapi_output_capture' && r[0].deviceId.endsWith('{gi}') && r[0].ok, 'режим In: Games берётся из «Games In» как «Захват выходного аудио»');
+  ok(r[1].kind === 'wasapi_output_capture' && r[1].deviceId.endsWith('{mi}'), 'режим In: Music берётся из «Music In»');
+  ok(r[2].kind === 'wasapi_input_capture' && r[2].deviceId.endsWith('{d}'), 'режим In: нет «Discord In» в списке, берём «Discord Out»');
+  ok(r[6].kind === 'wasapi_input_capture' && r[6].tag === 'B1', 'режим In: шины B1, B2 остаются на «Out»');
+  ok(Obs.plan(caps, names, play, 'out')[0].kind === 'wasapi_input_capture', 'режим Out: всё как раньше');
+  const { srv, port, state } = await startMock({ scenes: ['Сцена'], inputs: [] });
+  const c = await Obs.connect({ port });
+  const res = await Obs.sync(c, r, {});
+  const outs = state.inputs.filter((i) => i.inputKind === 'wasapi_output_capture');
+  ok(outs.length === 2 && outs.every((i) => /\{(gi|mi)\}$/.test(i.settings.device_id)), 'в OBS созданы два источника «Захват выходного аудио» на наши In');
+  const r2 = await Obs.sync(c, r, {});
+  ok(r2.created.length === 0 && res.created.length === 7, 'повторный запуск в режиме In ничего не дублирует');
+  c.close(); srv.close();
+  const col = Obs.collection(r, 'x');
+  ok(col.sources.filter((x) => x.id === 'wasapi_output_capture').length === 2, 'в файле коллекции источники In имеют тип wasapi_output_capture');
+}
+
 // 3. WebSocket с паролем, первая настройка
 {
   const { srv, port, state } = await startMock({ password: 's3кр.ет', scenes: ['Сцена игры', 'Сцена 2'], inputs: [{ inputName: 'Звук рабочего стола', inputKind: 'wasapi_output_capture', settings: { device_id: 'default' } }] });

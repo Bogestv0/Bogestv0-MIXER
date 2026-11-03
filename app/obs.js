@@ -29,7 +29,8 @@
     { tag: 'B1', dev: 'Mix B1', label: 'Mix B1', legacy: /^Bogestv0 Output 1(\s|$)/i },
     { tag: 'B2', dev: 'Mix B2', label: 'Mix B2', legacy: /^Bogestv0 Output 2(\s|$)/i }
   ];
-  const KIND = 'wasapi_input_capture';
+  const KIND = 'wasapi_input_capture';          // «Захват входного аудио»: наши Out (устройства записи)
+  const KIND_OUT = 'wasapi_output_capture';     // «Захват выходного аудио»: наши In (устройства воспроизведения), как «Aux Input» у Voicemeeter
   const SCENE = 'Bogestv0 MIXER';
   const PREFIX = 'Bogestv0 ';
 
@@ -37,8 +38,11 @@
 
   // Находит в списке устройств записи (то, что прислал движок: [{name, id}]) наши Out и готовит имена источников OBS.
   // Возвращает по строке на каждую дорожку: { tag, label, obsName, deviceName, deviceId, ok, why }.
-  function plan(caps, stripNames) {
+  // mode 'in' (если передан список устройств воспроизведения play): дорожки берутся из своего «In» (звук, который программы играют
+  // в это устройство, забирает Windows, как у Voicemeeter); если «In» не найден, берём «Out». Шины B1, B2 всегда из «Out».
+  function plan(caps, stripNames, play, mode) {
     caps = caps || [];
+    play = play || [];
     stripNames = stripNames || [];
     const used = new Set();
     return TARGETS.map((t) => {
@@ -48,7 +52,12 @@
       let obsName = PREFIX + label;
       for (let n = 2; used.has(obsName); n++) obsName = PREFIX + label + ' ' + n;   // две дорожки с одинаковым именем
       used.add(obsName);
-      const row = { tag: t.tag, label, obsName, deviceName: hit ? hit.name : '', deviceId: hit && hit.id ? hit.id : '', ok: false, why: '' };
+      const row = { tag: t.tag, label, obsName, kind: KIND, deviceName: hit ? hit.name : '', deviceId: hit && hit.id ? hit.id : '', ok: false, why: '' };
+      if (mode === 'in' && t.strip != null) {
+        const reIn = new RegExp('^Bogestv0 ' + esc(t.dev) + ' In(\\s|$)', 'i');
+        const inHit = play.find((d) => d && d.id && reIn.test(d.name || ''));
+        if (inHit) { row.kind = KIND_OUT; row.deviceName = inHit.name; row.deviceId = inHit.id; row.ok = true; return row; }
+      }
       if (!hit) row.why = 'устройство «Bogestv0 ' + t.dev + ' Out» не найдено в Windows';
       else if (!hit.id) row.why = 'движок не передал идентификатор устройства (обновите приложение)';
       else row.ok = true;
@@ -181,7 +190,7 @@
   async function sync(client, rows, opts) {
     opts = opts || {};
     const todo = rows.filter((r) => r.ok);
-    if (!todo.length) throw new Error('нет ни одного найденного устройства Out');
+    if (!todo.length) throw new Error('нет ни одного найденного устройства «Bogestv0 …» (In или Out)');
     const res = { created: [], reused: [], scenesAdded: [], muted: [] };
     const asArr = (x) => (Array.isArray(x) ? x : []);
 
@@ -193,17 +202,18 @@
     const names = new Set(inputs.map((i) => i.inputName).concat(scenes, [SCENE]));
     const byDevice = new Map();   // идентификатор устройства -> имя уже существующего источника
     for (const inp of inputs) {
-      if (inp.inputKind !== KIND) continue;
+      if (inp.inputKind !== KIND && inp.inputKind !== KIND_OUT) continue;
       try {
         const st = await client.request('GetInputSettings', { inputName: inp.inputName });
         const id = st.inputSettings && st.inputSettings.device_id;
-        if (id && !byDevice.has(id)) byDevice.set(id, inp.inputName);
+        if (id && !byDevice.has(inp.inputKind + '|' + id)) byDevice.set(inp.inputKind + '|' + id, inp.inputName);
       } catch (e) { /* источник мог исчезнуть: пропускаем */ }
     }
 
     const inScene = new Set(asArr((await client.request('GetSceneItemList', { sceneName: SCENE })).sceneItems).map((i) => i.sourceName));
     for (const r of todo) {
-      const have = byDevice.get(r.deviceId);
+      const kind = r.kind || KIND;
+      const have = byDevice.get(kind + '|' + r.deviceId);
       if (have) {
         if (!inScene.has(have)) { await client.request('CreateSceneItem', { sceneName: SCENE, sourceName: have, sceneItemEnabled: true }); inScene.add(have); }
         res.reused.push(have);
@@ -212,7 +222,7 @@
       let name = r.obsName;
       for (let n = 2; names.has(name); n++) name = r.obsName + ' ' + n;
       names.add(name);
-      await client.request('CreateInput', { sceneName: SCENE, inputName: name, inputKind: KIND, inputSettings: { device_id: r.deviceId, use_device_timing: false }, sceneItemEnabled: true });
+      await client.request('CreateInput', { sceneName: SCENE, inputName: name, inputKind: kind, inputSettings: { device_id: r.deviceId, use_device_timing: false }, sceneItemEnabled: true });
       inScene.add(name);
       res.created.push(name);
     }
@@ -257,10 +267,10 @@
   // «Звук рабочего стола» и «Микрофон» в ней нет нарочно: звук идёт только из Out и не задваивается.
   function collection(rows, name) {
     const todo = rows.filter((r) => r.ok);
-    if (!todo.length) throw new Error('нет ни одного найденного устройства Out');
+    if (!todo.length) throw new Error('нет ни одного найденного устройства «Bogestv0 …» (In или Out)');
     name = name || SCENE;
     const sceneName = 'Сцена';
-    const srcs = todo.map((r) => baseSource(KIND, r.obsName, { device_id: r.deviceId, use_device_timing: false }, { hotkeys: hk(['libobs.mute', 'libobs.unmute', 'libobs.push-to-mute', 'libobs.push-to-talk']) }));
+    const srcs = todo.map((r) => baseSource(r.kind || KIND, r.obsName, { device_id: r.deviceId, use_device_timing: false }, { hotkeys: hk(['libobs.mute', 'libobs.unmute', 'libobs.push-to-mute', 'libobs.push-to-talk']) }));
     const items = srcs.map((s, i) => ({
       align: 5, blend_method: 'default', blend_type: 'normal', bounds: { x: 0.0, y: 0.0 }, bounds_align: 0, bounds_crop: false, bounds_type: 0,
       crop_bottom: 0, crop_left: 0, crop_right: 0, crop_top: 0, group_item_backup: false, id: i + 1, locked: false, name: s.name,
@@ -285,7 +295,7 @@
     };
   }
 
-  const Obs = { TARGETS, KIND, SCENE, plan, connect, sync, collection, authString, sha256, sha256b64 };
+  const Obs = { TARGETS, KIND, KIND_OUT, SCENE, plan, connect, sync, collection, authString, sha256, sha256b64 };
   root.ObsLink = Obs;
   if (typeof module !== 'undefined' && module.exports) module.exports = Obs;
 })(typeof window !== 'undefined' ? window : globalThis);

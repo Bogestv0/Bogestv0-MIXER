@@ -59,7 +59,7 @@ constexpr int kSlots = 7;
 constexpr int kMics = 2;
 constexpr size_t kMaxBlock = 4096;  // самый большой блок за один проход
 static const char* kSlotNames[kSlots] = {"hw1", "hw2", "a1", "a2", "a3", "b1", "b2"};
-static const char* kEngineVersion = "0.6.4";
+static const char* kEngineVersion = "0.6.6";
 
 // Кольцо «один пишет, один читает» для стерео-кадров. Связывает потоки разных устройств.
 struct Ring {
@@ -222,7 +222,8 @@ public:
               << "\",\"def\":" << (cap_[i].isDefault ? 1 : 0) << "}";
         o << "],\"play\":[";
         for (size_t i = 0; i < play_.size(); ++i)
-            o << (i ? "," : "") << "{\"name\":\"" << json_escape(play_[i].name) << "\",\"def\":" << (play_[i].isDefault ? 1 : 0) << "}";
+            o << (i ? "," : "") << "{\"name\":\"" << json_escape(play_[i].name) << "\",\"id\":\"" << json_escape(wasapi_id(play_[i].id))
+              << "\",\"def\":" << (play_[i].isDefault ? 1 : 0) << "}";
         o << "]}";
         return o.str();
     }
@@ -654,7 +655,7 @@ public:
                 try { i = std::stoi(v); } catch (...) { return "listen: номер дорожки или off"; }
                 if (i < 0 || i >= kStrips) return "listen: дорожка 0.." + std::to_string(kStrips - 1);
             }
-            if (listen_.exchange(i) != i) listen_flush_ = true;
+            if (listen_.exchange(i) != i) { listen_flush_ = true; dirty = true; }   // окну нужно новое состояние (поле listen)
         } else if (b == "dev") {
             std::string slot; in >> slot;
             int s = slot_index(slot);

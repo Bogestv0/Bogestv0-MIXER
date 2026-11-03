@@ -150,6 +150,10 @@ html,body{height:100%;overflow:hidden}
               </div>
             </sc-for>
           </div>
+          <button onClick="{{obs.toggleMode}}" aria-pressed="{{obs.modePressed}}" style="display:flex;align-items:center;gap:10px;text-align:left;min-height:40px;padding:6px 12px;border-radius:12px;font:500 13px/1.35 var(--f-body);{{obs.modeStyle}}">
+            <span style="flex:0 0 18px;height:18px;border-radius:5px;border:1.5px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:13px;line-height:1">{{obs.modeMark}}</span>
+            Брать звук дорожек из «In» (как «Aux Input» у Voicemeeter): без отдельного «Out», в OBS «Захват выходного аудио»
+          </button>
           <button onClick="{{obs.toggleMute}}" aria-pressed="{{obs.mutePressed}}" style="display:flex;align-items:center;gap:10px;text-align:left;min-height:40px;padding:6px 12px;border-radius:12px;font:500 13px/1.35 var(--f-body);{{obs.muteStyle}}">
             <span style="flex:0 0 18px;height:18px;border-radius:5px;border:1.5px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:13px;line-height:1">{{obs.muteMark}}</span>
             Заглушить «Звук рабочего стола» в OBS (иначе звук In и Out задвоится)
@@ -242,7 +246,7 @@ html,body{height:100%;overflow:hidden}
 <div id="app"></div>
 <script>
 // Звук в OBS (app/obs.js): состояние карточки живёт здесь, потому что экран перерисовывается при каждом событии движка.
-const OBSUI = { probe: null, busy: false, msg: '', bad: false, muteDesktop: false };
+const OBSUI = { probe: null, busy: false, msg: '', bad: false, muteDesktop: false, mode: 'in' };
 const obsT = () => (window.__TAURI__ && window.__TAURI__.core ? window.__TAURI__ : null);
 const obsRender = () => { if (window.__dc) window.__dc.setState({}); };
 async function obsProbe() {
@@ -254,7 +258,7 @@ async function obsProbe() {
 }
 function obsRows() {
   const B = window.Bridge;
-  return ObsLink.plan(B.devices.cap || [], ((B.settings && B.settings.strips) || []).map((x) => x.name));
+  return ObsLink.plan(B.devices.cap || [], ((B.settings && B.settings.strips) || []).map((x) => x.name), B.devices.play || [], OBSUI.mode);
 }
 async function obsRun(job) {
   if (OBSUI.busy) return;
@@ -381,7 +385,9 @@ class Component extends DCLogic {
     else if (!pr.found) { pillText = 'OBS не найден'; pill = 'background:var(--warn-soft);color:var(--warn)'; }
     else if (wsOn) { pillText = 'OBS: WebSocket включён'; pill = 'background:var(--ok-soft);color:var(--ok)'; }
     else { pillText = 'OBS: WebSocket выключен'; pill = 'background:var(--signal-soft);color:var(--signal)'; }
-    intro = 'Звук рабочего стола в OBS видит только устройства воспроизведения (In), а наши Out это устройства записи. Микшер сам добавит их в OBS как «Захват входного аудио»: по источнику на дорожку и на шины B1, B2. Ничего ставить не нужно.'
+    intro = (OBSUI.mode === 'in'
+      ? 'Программа играет в «Bogestv0 … In», а OBS забирает этот же звук как «Захват выходного аудио» (звук копирует сама Windows, как у «Aux Input» в Voicemeeter). Отдельный «Out» дорожкам не нужен. Шины B1, B2 идут из «Mix … Out». Ничего ставить не нужно.'
+      : 'Звук рабочего стола в OBS видит только устройства воспроизведения (In), а наши Out это устройства записи. Микшер сам добавит их в OBS как «Захват входного аудио»: по источнику на дорожку и на шины B1, B2. Ничего ставить не нужно.')
       + (hasApp && pr && pr.found && !wsOn ? '\nЧтобы добавить прямо в открытый OBS, включите в нём «Сервис → Настройки сервера WebSocket → Включить сервер WebSocket» (это встроено в OBS) и нажмите «Проверить OBS снова». Или создайте коллекцию сцен: она появится в меню OBS «Коллекция сцен».' : '');
     const obs = {
       pill, pillText, intro,
@@ -392,6 +398,9 @@ class Component extends DCLogic {
       canWs: hasApp && wsOn && nOk > 0 && idle, noWs: !(hasApp && wsOn && nOk > 0 && idle),
       canFile: hasApp && !!(pr && pr.found) && nOk > 0 && idle, noFile: !(hasApp && !!(pr && pr.found) && nOk > 0 && idle),
       add: obsAdd, file: obsFile, recheck: obsProbe,
+      toggleMode: () => { OBSUI.mode = OBSUI.mode === 'in' ? 'out' : 'in'; obsRender(); },
+      modePressed: OBSUI.mode === 'in', modeMark: OBSUI.mode === 'in' ? '✓' : '',
+      modeStyle: OBSUI.mode === 'in' ? 'background:var(--signal-soft);color:var(--signal);border:1px solid var(--signal)' : 'background:var(--surface-2);color:var(--fg);border:1px solid var(--line)',
       toggleMute: () => { OBSUI.muteDesktop = !OBSUI.muteDesktop; obsRender(); },
       mutePressed: OBSUI.muteDesktop, muteMark: OBSUI.muteDesktop ? '✓' : '',
       muteStyle: OBSUI.muteDesktop ? 'background:var(--signal-soft);color:var(--signal);border:1px solid var(--signal)' : 'background:var(--surface-2);color:var(--fg);border:1px solid var(--line)',

@@ -1000,6 +1000,8 @@ static int selftest_listen() {
         m.listen_drain(got);
         for (int i = 0; i < 4; ++i) m.debug_process(o.data(), 480);
         check(m.listen_drain(got) == 4 && got.size() == 480u * 4 * 2, "переключение на другую дорожку работает");
+        m.dirty = false; m.command("set listen 2");
+        check(m.dirty.load(), "смена дорожки прослушивания обновляет состояние для пульта");
         m.command("set listen off");
         for (int i = 0; i < 4; ++i) m.debug_process(o.data(), 480);
         check(m.listen_drain(got) == -1 && got.empty(), "после «off» звук не копится");

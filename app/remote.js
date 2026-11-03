@@ -57,7 +57,10 @@
         }
         break;
       case 'meta': meta = m; buildMain(); break;
-      case 'state': st = m; if (meta) paintState(); break;
+      case 'state':
+        // Только что нажали «Слушать»/«Стоп», а движок ещё не успел это отразить: старое состояние не должно выключать звук.
+        if (Date.now() < wantUntil) { if (m.listen === wanted) wantUntil = 0; else m.listen = wanted; }
+        st = m; if (meta) paintState(); break;
       case 'm': if (meta) paintMeters(m); break;
       case 'err': toast(m.msg); break;
     }
@@ -280,6 +283,7 @@
 
   /* ---------- прослушивание ---------- */
   let ctx = null, nextTime = 0, playing = -1;
+  let wanted = -1, wantUntil = 0;   // что запросили у движка и до какого момента ждём подтверждения
 
   function ensureAudio() {
     if (!ctx) {
@@ -296,16 +300,19 @@
     // Контекст создаём прямо в обработчике касания: без касания браузер не разрешает звук.
     if (!ensureAudio()) return;
     nextTime = 0; playing = i;
+    wanted = i; wantUntil = Date.now() + 2500;
     send({ t: 'listen', i });
+    if (st) { st.listen = i; paintState(); for (const k in ui.strips) paintStrip(Number(k)); }
   }
 
-  function stopListening() { send({ t: 'listen', i: null }); stopAudio(); if (st) { st.listen = -1; paintState(); for (const i in ui.strips) paintStrip(Number(i)); } }
+  function stopListening() { wanted = -1; wantUntil = Date.now() + 2500; send({ t: 'listen', i: null }); stopAudio(); if (st) { st.listen = -1; paintState(); for (const i in ui.strips) paintStrip(Number(i)); } }
   function stopAudio() { playing = -1; nextTime = 0; }
 
   function playFrame(buf) {
     if (!ctx || playing < 0 || buf.byteLength < 6) return;
     const dv = new DataView(buf);
     if (dv.getUint8(0) !== 1) return;
+    if (dv.getUint8(1) !== playing) return;                          // кадр прежней дорожки после переключения
     const frames = (buf.byteLength - 2) >> 2;
     if (!frames) return;
     const ab = ctx.createBuffer(2, frames, 48000);
