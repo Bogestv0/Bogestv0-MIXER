@@ -486,6 +486,11 @@ fn show_main(app: &AppHandle) {
 
 fn main() {
     tauri::Builder::default()
+        // Должен идти первым: повторный запуск не создаёт новую копию,
+        // а показывает уже работающее окно (даже скрытое в трей / свёрнутое).
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_main(app);
+        }))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
