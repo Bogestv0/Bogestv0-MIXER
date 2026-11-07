@@ -89,7 +89,7 @@ class Component extends DCLogic {
     const save = () => { B.scheduleSave(); this.setState({}); };
     const rows = S.strips.map((d, i) => {
       const shown = !d.hidden;
-      const src = i < 2 ? (dev[i === 0 ? 'hw1' : 'hw2'] || 'Устройство не выбрано') : 'Bogestv0 ' + ['Games', 'Music', 'Discord', 'Browser 1', 'Donations', 'Browser 2'][i - 2] + ' In';
+      const src = i < 2 ? (dev[i === 0 ? 'hw1' : 'hw2'] || 'Устройство не выбрано') : dev['v' + (i - 1)] ? dev['v' + (i - 1)].replace(/^loop:/, 'Захват: ') : 'Bogestv0 ' + ['Games', 'Music', 'Discord', 'Browser 1', 'Donations', 'Browser 2'][i - 2] + ' In';
       return {
         tag: d.tag, name: d.name, src, tagStyle: i < 2 ? wrn : sig, op: shown ? 1 : 0.5,
         state: shown ? 'виден' : 'скрыт', on: shown,

@@ -199,6 +199,28 @@ html,body{height:100%;overflow:hidden}
         </div>
 
         <div style="flex:0 0 auto;background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px">
+          <h2 style="margin:0;font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Источники дорожек V1–V6</h2>
+          <div style="font-size:13px;color:var(--muted);line-height:1.5">{{srcIntro}}</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <sc-for list="{{srcRows}}" as="r">
+              <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 12px;border-radius:14px;background:var(--surface-2);border:1px solid {{r.border}}">
+                <span style="flex:0 0 46px;text-align:center;font:600 12.5px var(--f-mono);padding:4px 0;border-radius:99px;{{r.tagStyle}}">{{r.tag}}</span>
+                <div style="flex:1 1 180px;min-width:0;display:flex;flex-direction:column">
+                  <span style="font-weight:600;line-height:1.3">{{r.name}}</span>
+                  <span style="font:400 11.5px var(--f-mono);color:{{r.infoColor}}">{{r.info}}</span>
+                </div>
+                <select onChange="{{r.change}}" aria-label="Источник звука для {{r.tag}}" style="flex:1 1 260px;min-width:0;max-width:100%;min-height:38px;padding:0 10px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:500 13px var(--f-body)">
+                  <sc-for list="{{r.options}}" as="o">
+                    <sc-if value="{{o.sel}}"><option value="{{o.value}}" selected>{{o.label}}</option></sc-if>
+                    <sc-if value="{{o.nsel}}"><option value="{{o.value}}">{{o.label}}</option></sc-if>
+                  </sc-for>
+                </select>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="flex:0 0 auto;background:var(--surface);box-shadow:0 1px 0 var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px">
           <h2 style="margin:0;font:600 12px var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">Кабели: что отдаёт «Out»</h2>
           <div style="font-size:13px;color:var(--muted);line-height:1.5">Приём работает всегда: программа играет в «Bogestv0 … In», звук идёт на дорожку. Отдача: выберите, что услышит программа, которая записывает с «Bogestv0 … Out» (OBS, Discord, запись экрана). «Дорожка» — чистый звук дорожки, как раньше; A1–B2 — готовый микс шины после фейдера и лимитера. Можно выбрать несколько, звук сложится.</div>
           <div style="display:flex;flex-direction:column;gap:8px">
@@ -500,7 +522,31 @@ class Component extends DCLogic {
       if (reading) state += ' · читает программа';
       return { tag: 'V' + (c.t + 1), name: c.name, state, chips, tagStyle: vSig };
     });
-    return { obs, devices, slots, cables, virtuals, drvText, drvPill, virtualsNote, diagText, foundCount: list.length, usedCount: used, refresh: () => B.send('devices') };
+    // Источники дорожек V1–V6 (0.6.8): по умолчанию звук идёт из драйвера Bogestv0; можно взять чужой драйвер (VB-Cable, Voicemeeter…).
+    // Устройство записи (например, «CABLE Output») или «захват вывода»: то, что играет любое устройство воспроизведения (loop:).
+    const exts = ['v1', 'v2', 'v3', 'v4', 'v5', 'v6'];
+    const usedOut = ['a1', 'a2', 'a3', 'b1', 'b2'].map((k) => dev[k]).filter(Boolean);
+    const capNames = (B.devices.cap || []).map((d) => d.name).filter((n) => !/Bogestv0/i.test(n));
+    const playNames = (B.devices.play || []).map((d) => d.name).filter((n) => !/Bogestv0/i.test(n) && usedOut.indexOf(n) < 0);
+    const srcRows = exts.map((k, i) => {
+      const cur = dev[k] || '';
+      const bad = cur && st && st.running && !okm[k];
+      const opts = [{ value: '', label: 'Драйвер Bogestv0 (по умолчанию)' }]
+        .concat(capNames.map((n) => ({ value: n, label: 'Устройство записи: ' + n })))
+        .concat(playNames.map((n) => ({ value: 'loop:' + n, label: 'Захват вывода: ' + n })));
+      if (cur && !opts.some((o) => o.value === cur)) opts.push({ value: cur, label: cur.replace(/^loop:/, 'Захват вывода: ') + ' (нет в системе)' });
+      const inf = st && st.info && st.info[k];
+      return {
+        tag: 'V' + (i + 1), name: 'Bogestv0 ' + tracks[i][0] + ' (' + tracks[i][1] + ')',
+        info: !cur ? ('Источник: драйвер Bogestv0' + (open(i) ? ' · ' + open(i) : '')) : inf ? 'Работает · ' + (inf[0] / 1000).toString().replace('.', ',') + ' кГц · ' + inf[1] + ' кан. · ' + inf[2] + ' бит' : (st && !st.running) ? 'Ждёт главный выход (A1): сначала выберите колонки' : bad ? 'Не открылось (занято?), пока играет драйвер Bogestv0' : 'Подключается…',
+        infoColor: cur && inf ? 'var(--ok)' : bad ? 'var(--bad)' : 'var(--muted)',
+        border: bad ? 'var(--bad)' : cur ? 'var(--signal)' : 'transparent', tagStyle: vSig,
+        options: opts.map((o) => ({ ...o, sel: o.value === cur, nsel: o.value !== cur })),
+        change: (ev) => B.setDevice(k, ev.target.value)
+      };
+    });
+    const srcIntro = 'Если не хотите ставить наш драйвер: выберите для дорожки любой другой драйвер. Например, программа играет в «CABLE Input» (VB-Cable), а здесь для нужной дорожки выбираете «CABLE Output». Можно также взять «Захват вывода»: микшер заберёт всё, что играет выбранное устройство воспроизведения. Каждая дорожка настраивается отдельно, остальные продолжают работать через драйвер Bogestv0. Не берите здесь устройство, на которое микшер сам выводит звук (A1–B2): получится петля.';
+    return { obs, devices, slots, cables, srcRows, srcIntro, virtuals, drvText, drvPill, virtualsNote, diagText, foundCount: list.length, usedCount: used, refresh: () => B.send('devices') };
   }
 }
 </script>

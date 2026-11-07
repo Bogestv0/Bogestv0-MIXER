@@ -3,7 +3,7 @@
 (function () {
   const T = window.__TAURI__;
   const listeners = new Set();
-  const SLOTS = ['hw1', 'hw2', 'a1', 'a2', 'a3', 'b1', 'b2'];
+  const SLOTS = ['hw1', 'hw2', 'a1', 'a2', 'a3', 'b1', 'b2', 'v1', 'v2', 'v3', 'v4', 'v5', 'v6'];
 
   const STRIP_DEFAULTS = [
     { name: 'Микрофон 1', tag: 'HW1', source: '' },

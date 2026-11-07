@@ -55,11 +55,14 @@ namespace bg {
 
 constexpr int kStrips = 8;
 constexpr int kBuses = 5;
-constexpr int kSlots = 7;
+constexpr int kSlots = 13;       // hw1, hw2, a1..b2, затем v1..v6 (0.6.8: свой вход на дорожку V1..V6 вместо драйвера Bogestv0)
+constexpr int kBusSlotEnd = 7;   // слоты 2..6 = выходные шины A1..B2
+constexpr int kExtFirst = 7;     // слоты 7..12 = внешние входы дорожек V1..V6 (strips[2..7])
+static const char* kLoopPrefix = "loop:";   // «loop:Имя» = захват того, что играет устройство вывода (WASAPI loopback)
 constexpr int kMics = 2;
 constexpr size_t kMaxBlock = 4096;  // самый большой блок за один проход
-static const char* kSlotNames[kSlots] = {"hw1", "hw2", "a1", "a2", "a3", "b1", "b2"};
-static const char* kEngineVersion = "0.6.6";
+static const char* kSlotNames[kSlots] = {"hw1", "hw2", "a1", "a2", "a3", "b1", "b2", "v1", "v2", "v3", "v4", "v5", "v6"};
+static const char* kEngineVersion = "0.6.8";
 
 // Кольцо «один пишет, один читает» для стерео-кадров. Связывает потоки разных устройств.
 struct Ring {
@@ -193,6 +196,7 @@ public:
         }
         for (int i = 0; i < kStrips; ++i) { strips[i].hw = i < 2; strips[i].ring.init(8192); }
         for (int i = 0; i < kMics; ++i) mic_rd_[i].configure(kHwTargetFrames);
+        for (int i = 0; i < kShmInRings; ++i) ext_rd_[i].configure(kHwTargetFrames);
         for (int k = 0; k < kBuses; ++k) bus_rd_[k].configure(kHwTargetFrames);
         for (int k = 0; k < kBuses; ++k) buses[k].ring.init(8192);
         listen_ring_.init(16384);
@@ -240,8 +244,13 @@ public:
         if (name == "-") name.clear();
         if (!name.empty() && name.find_first_not_of("0123456789") == std::string::npos) {
             size_t idx = std::stoul(name);
-            const auto& list = slot < 2 ? cap_ : play_;
+            const auto& list = (slot < 2 || slot >= kExtFirst) ? cap_ : play_;
             name = idx < list.size() ? list[idx].name : "";
+        }
+        // Петля: нельзя захватывать то, что играет наш же выход (A1..B2), звук пошёл бы по кругу.
+        if (slot >= kExtFirst && name.rfind(kLoopPrefix, 0) == 0) {
+            const std::string dev = name.substr(std::strlen(kLoopPrefix));
+            for (int b = 2; b < kBusSlotEnd; ++b) if (names_[b] == dev) return std::string("петля: устройство уже назначено на ") + kSlotNames[b];
         }
         names_[slot] = name;
         return rebuild();
@@ -279,7 +288,7 @@ public:
         } else if (master_ < 0) {
             // Нет ведущего устройства: ждём, пока появится любое назначенное устройство выхода.
             bool any = false;
-            for (int s = 2; s < kSlots; ++s) any = any || ((rc == 2 || s == 2) && !names_[s].empty() && find_id(s, names_[s]));
+            for (int s = 2; s < kBusSlotEnd; ++s) any = any || ((rc == 2 || s == 2) && !names_[s].empty() && find_id(s, names_[s]));
             if (any && now >= rebuild_at_) {
                 err = rebuild();
                 changed = true;
@@ -295,7 +304,8 @@ public:
                 open_slot(s, false, e);
                 if (ok_[s]) {
                     changed = true; fails_[s] = 0;
-                    if (s >= 2) { buses[s - 2].ring.clear(); bus_rd_[s - 2].request_reset(); }
+                    if (s >= kExtFirst) ext_rd_[s - kExtFirst].request_reset();
+                    else if (s >= 2) { buses[s - 2].ring.clear(); bus_rd_[s - 2].request_reset(); }
                     else mic_rd_[s].request_reset();
                 }
                 else if (fails_[s] == 1) err += e;   // об ошибке говорим один раз, дальше тихо пробуем реже
@@ -694,6 +704,7 @@ private:
     ShmRing shm_in_[kShmInRings], shm_out_[kShmOutRings];
     InReader mic_rd_[kMics];                       // микрофоны HW1, HW2: кольцо захвата -> главный проход
     InReader bus_rd_[kBuses];                      // вторичные выходы A2, A3, B1, B2: главный проход -> кольцо -> устройство
+    InReader ext_rd_[kShmInRings];                 // внешние входы V1..V6 (чужие драйверы): кольцо захвата -> главный проход
     InReader in_rd_[kShmInRings];                  // чтение колец входов с запасом (счётчики для диагностики внутри)
     bool drv_was_active_[kShmInRings] = {};        // только аудио-поток
     uint32_t last_driver_beat_ = 0;                // только сторож
@@ -818,7 +829,8 @@ private:
 
     // Открывает устройство слота. При неудаче дописывает причину в err и назначает следующую попытку сторожу.
     void open_slot(int s, bool is_master, std::string& err) {
-        ma_device_type type = s < 2 ? ma_device_type_capture : ma_device_type_playback;
+        const bool loop = s >= kExtFirst && names_[s].rfind(kLoopPrefix, 0) == 0;
+        ma_device_type type = loop ? ma_device_type_loopback : (s < 2 || s >= kExtFirst) ? ma_device_type_capture : ma_device_type_playback;
         const ma_device_id* id = find_id(s, names_[s]);
         for (int attempt = 0; attempt < 2; ++attempt) {
             ma_device_config cfg = ma_device_config_init(type);
@@ -829,9 +841,9 @@ private:
             cfg.periods = is_master ? 3 : 2;
             cfg.performanceProfile = ma_performance_profile_conservative;
             cfg.noPreSilencedOutputBuffer = MA_TRUE;
-            cfg.dataCallback = is_master ? &Mixer::cb_master : (s < 2 ? &Mixer::cb_capture : &Mixer::cb_bus);
+            cfg.dataCallback = is_master ? &Mixer::cb_master : ((s < 2 || s >= kExtFirst) ? &Mixer::cb_capture : &Mixer::cb_bus);
             cfg.pUserData = &roles_[s];
-            if (type == ma_device_type_capture) {
+            if (type == ma_device_type_capture || type == ma_device_type_loopback) {
                 cfg.capture.pDeviceID = id; cfg.capture.format = ma_format_f32; cfg.capture.channels = 2;
             } else {
                 cfg.playback.pDeviceID = id; cfg.playback.format = ma_format_f32; cfg.playback.channels = 2;
@@ -844,7 +856,7 @@ private:
                               (d->playback.internalSampleRate ? d->playback.internalSampleRate : 48000);
             }
             {   // как устройство открыто на самом деле (для строки состояния на экране «Устройства»)
-                const bool cap = type == ma_device_type_capture;
+                const bool cap = type != ma_device_type_playback;
                 info_[s].rate = cap ? d->capture.internalSampleRate : d->playback.internalSampleRate;
                 info_[s].ch = cap ? d->capture.internalChannels : d->playback.internalChannels;
                 info_[s].bits = ma_get_bytes_per_sample(cap ? d->capture.internalFormat : d->playback.internalFormat) * 8;
@@ -861,8 +873,10 @@ private:
     }
 
     const ma_device_id* find_id(int slot, const std::string& name) {
-        const auto& list = slot < 2 ? cap_ : play_;
-        for (const auto& d : list) if (name == d.name) return &d.id;
+        const bool loop = slot >= kExtFirst && name.rfind(kLoopPrefix, 0) == 0;
+        const auto& list = ((slot < 2 || slot >= kExtFirst) && !loop) ? cap_ : play_;
+        const std::string want = loop ? name.substr(std::strlen(kLoopPrefix)) : name;
+        for (const auto& d : list) if (want == d.name) return &d.id;
         return nullptr;
     }
 
@@ -874,6 +888,7 @@ private:
         for (int k = 0; k < kBuses; ++k) buses[k].ring.init(8192);
         for (int i = 0; i < kMics; ++i) mic_rd_[i].request_reset();
         for (int k = 0; k < kBuses; ++k) bus_rd_[k].request_reset();
+        for (int i = 0; i < kShmInRings; ++i) ext_rd_[i].request_reset();
         for (int s = 0; s < kSlots; ++s) { ok_[s] = false; fails_[s] = 0; miss_[s] = 0; retry_at_[s] = {}; }
         rebuild_fails_ = 0;
         rebuild_at_ = {};
@@ -882,7 +897,7 @@ private:
         // Ведущее устройство: первая выходная шина, у которой есть устройство. Оно задаёт такт всей обработке.
         std::vector<bool> usable(kSlots, false);
         for (int s = 0; s < kSlots; ++s) usable[s] = !names_[s].empty() && find_id(s, names_[s]);
-        for (int s = 2; s < kSlots && master_ < 0; ++s) if (usable[s]) master_ = s - 2;
+        for (int s = 2; s < kBusSlotEnd && master_ < 0; ++s) if (usable[s]) master_ = s - 2;
 
         auto open = [&](int s, bool is_master) { open_slot(s, is_master, err); };
 
@@ -890,7 +905,7 @@ private:
         if (master_ >= 0 && !ok_[2 + master_]) {  // ведущее не открылось: пробуем следующее
             int failed = master_;
             master_ = -1;
-            for (int s = 2 + failed + 1; s < kSlots && master_ < 0; ++s) if (usable[s]) master_ = s - 2;
+            for (int s = 2 + failed + 1; s < kBusSlotEnd && master_ < 0; ++s) if (usable[s]) master_ = s - 2;
             if (master_ >= 0) open(2 + master_, true);
             if (master_ >= 0 && !ok_[2 + master_]) master_ = -1;
         }
@@ -906,7 +921,8 @@ private:
     // ---------- аудио-потоки ----------
     static void cb_capture(ma_device* d, void*, const void* in, ma_uint32 frames) {
         Role* r = static_cast<Role*>(d->pUserData);
-        if (in) r->m->strips[r->slot].ring.push(static_cast<const float*>(in), frames);
+        const int strip = r->slot < kExtFirst ? r->slot : r->slot - kExtFirst + 2;   // hw1, hw2 -> дорожки 0, 1; v1..v6 -> дорожки 2..7
+        if (in) r->m->strips[strip].ring.push(static_cast<const float*>(in), frames);
     }
     static void cb_bus(ma_device* d, void* out, const void*, ma_uint32 frames) {
         Role* r = static_cast<Role*>(d->pUserData);
@@ -1008,6 +1024,10 @@ private:
                 if (s.hw) {
                     mic_rd_[i].read(s.ring, t, static_cast<uint32_t>(n));   // запас ~10 мс и подстройка под часы микрофона (inbuf.h)
                     if (i < kMics && ok_[i]) mic[i].process(t, n);   // обработка микрофона
+                } else if (s.src.load(std::memory_order_relaxed) == SRC_OFF && ok_[kExtFirst + i - 2]) {
+                    // Выбран чужой драйвер или устройство (Настройки устройств → «Источники дорожек»): читаем его вместо драйвера Bogestv0.
+                    ext_rd_[i - 2].read(s.ring, t, static_cast<uint32_t>(n));
+                    drv_was_active_[i - 2] = false;
                 } else if (shm_ && s.src.load(std::memory_order_relaxed) == SRC_OFF && shm_in_[i - 2].active()) {
                     ShmRing& rg = shm_in_[i - 2];
                     InReader& rd = in_rd_[i - 2];

@@ -216,6 +216,20 @@ static int selftest_devices() {
             check(m.command("set dev a1 " + dev).empty() && m.slot_ok(2), "устройство A1 открылось (ведущее)");
             check(m.command("set dev a2 " + dev).empty() && m.slot_ok(2) && m.slot_ok(3), "устройство A2 открылось");
 
+            // 0.6.8: своё устройство на дорожку V1 вместо драйвера Bogestv0.
+            const std::string cap = m.debug_name(true);
+            if (!cap.empty()) {
+                check(m.command("set dev v1 " + cap).empty() && m.slot_ok(7) && m.slot_ok(2), "V1: чужое устройство записи открылось, ведущее не тронуто");
+                check(m.state_json().find("\"v1\":\"" + cap + "\"") != std::string::npos, "V1: имя источника попало в состояние");
+                m.command("set dev v1 -");
+                check(!m.slot_ok(7) && m.slot_ok(2), "V1: источник снят, тракт работает");
+            }
+            // Петля: захват устройства, которое играет наш же выход, запрещён (звук пошёл бы по кругу).
+            m.command("set dev a3 " + dev);
+            check(!m.command("set dev v2 loop:" + dev).empty() && !m.slot_ok(8), "V2: захват устройства, занятого выходом A3, отклонён");
+            m.command("set dev a3 -");
+            m.command("set dev v2 -");
+
             // Обычное устройство остановилось (выдернули наушники): открывается само, остальные не трогаем.
             const void* master_before = m.debug_dev(2);
             m.debug_stop(3);
